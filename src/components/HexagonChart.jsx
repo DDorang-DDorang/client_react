@@ -161,25 +161,46 @@ const HexagonChart = ({ data = {}, transcriptData, analysisDetails }) => {
             
             // Draw label
             ctx.fillStyle = colors.text;
-            ctx.font = 'bold 14px Inter, sans-serif';
+            ctx.font = 'bold 12px Inter, sans-serif';
             ctx.fillText(label, point.x, point.y - 8);
             
             // Draw score with color
-            ctx.font = '12px Inter, sans-serif';
-            ctx.fillStyle = getScoreColor(safeData[key]); // 실제 점수 기준으로 색상
+            ctx.font = '10px Inter, sans-serif';
+            ctx.fillStyle = getScoreColor(safeData[key]);
             ctx.fillText(`${score}점`, point.x, point.y + 8);
         });
 
         // Draw center score (animated)
         const averageScore = Math.round((Object.values(safeData).reduce((a, b) => a + b, 0) / dataKeys.length) * animationProgress);
         ctx.fillStyle = colors.text;
-        ctx.font = 'bold 16px Inter, sans-serif';
+        ctx.font = 'bold 14px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`${averageScore}`, centerX, centerY - 5);
-        ctx.font = '12px Inter, sans-serif';
+        ctx.font = '10px Inter, sans-serif';
         ctx.fillText('평균', centerX, centerY + 10);
 
     }, [safeData, activeView, animationProgress]);
+
+    const labelStyle = {
+        position: 'absolute',
+        transform: 'translate(-50%, -50%)',
+        fontSize: '0.8rem',
+        fontWeight: 'bold',
+        color: '#333',
+        textAlign: 'center',
+        width: '80px',
+        pointerEvents: 'none'
+    };
+
+    const scoreStyle = {
+        position: 'absolute',
+        transform: 'translate(-50%, -50%)',
+        fontSize: '0.7rem',
+        color: '#666',
+        textAlign: 'center',
+        width: '80px',
+        pointerEvents: 'none'
+    };
 
     return (
         <div style={{
@@ -442,55 +463,34 @@ const HexagonChart = ({ data = {}, transcriptData, analysisDetails }) => {
                     </div>
                 ) : (
                     // Transcript View
-                    <>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '20px',
+                        maxHeight: '800px',
+                        overflowY: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        fontFamily: 'Inter, sans-serif',
+                        lineHeight: '1.8',
+                        fontSize: '30px',
+                        color: '#333333'
+                    }}>
                         {transcriptData ? (
-                            <div style={{
-                                backgroundColor: '#ffffff',
-                                borderRadius: '8px',
-                                padding: '20px',
-                                border: '1px solid #e9ecef',
-                                height: '100%',
-                                overflowY: 'auto'
-                            }}>
-                                <p style={{
-                                    fontSize: '16px',
-                                    color: '#333333',
-                                    lineHeight: '1.8',
-                                    margin: 0,
-                                    fontFamily: 'Inter, sans-serif',
-                                    textAlign: 'justify'
-                                }}>
-                                    {transcriptData.fullText}
-                                </p>
+                            <div>
+                                {typeof transcriptData === 'object' ? transcriptData.fullText : transcriptData}
                             </div>
                         ) : (
-                            <div style={{
-                                textAlign: 'center',
+                            <div style={{ 
+                                textAlign: 'center', 
                                 color: '#666666',
-                                fontSize: '16px',
                                 padding: '40px 20px',
-                                height: '100%',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                justifyContent: 'center',
-                                alignItems: 'center'
+                                fontSize: '30px'
                             }}>
-                                <div style={{
-                                    fontSize: '48px',
-                                    marginBottom: '16px'
-                                }}>
-                                    📝
-                                </div>
-                                <div>대본 데이터가 없습니다</div>
-                                <div style={{
-                                    fontSize: '14px',
-                                    marginTop: '8px'
-                                }}>
-                                    음성이 포함된 영상을 업로드하면 STT 분석 결과를 확인할 수 있습니다.
-                                </div>
+                                음성 인식 결과가 없습니다.
+                                <br />
+                                음성이 포함된 영상을 업로드하면 STT 분석 결과를 확인할 수 있습니다.
                             </div>
                         )}
-                    </>
+                    </div>
                 )}
             </div>
         </div>

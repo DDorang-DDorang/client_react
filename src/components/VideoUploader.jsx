@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { validateVideoFile } from '../utils/cameraUtils';
 import videoAnalysisService from '../api/videoAnalysisService';
+import axios from 'axios';
 
 const VideoUploader = ({ 
   onFileUpload, 
@@ -16,6 +17,11 @@ const VideoUploader = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [success, setSuccess] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaStream, setMediaStream] = useState(null);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [videoBlob, setVideoBlob] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
   
   const fileInputRef = useRef(null);
 
@@ -71,13 +77,23 @@ const VideoUploader = ({
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (!videoBlob) return;
     
     setIsUploading(true);
-    setError('');
-    setSuccess('');
+    setError(null);
     
     try {
+      const formData = new FormData();
+      const fileExtension = videoBlob.type.includes('webm') ? '.webm' : '.mp4';
+      const fileName = `recording_${new Date().toISOString().replace(/[:.]/g, '-')}${fileExtension}`;
+      formData.append('file', videoBlob, fileName);
+      
+      const response = await axios.post('/api/presentations/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
       // 진행률 시뮬레이션
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
@@ -229,6 +245,57 @@ const VideoUploader = ({
 
   const isProcessing = isUploading || isAnalyzing;
   const currentStatus = isAnalyzing ? '분석 중...' : isUploading ? '업로드 중...' : '';
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: {
+          width: 320,
+          height: 240,
+          frameRate: 15
+        }, 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 2
+        }
+      });
+      setMediaStream(stream);
+      
+      // 지원되는 MIME 타입 확인
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+        ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+          ? 'video/webm;codecs=vp8,opus'
+          : 'video/webm';
+      
+      console.log('Using MIME type:', mimeType);
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 250000,
+        audioBitsPerSecond: 128000
+      });
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          const blob = new Blob([event.data], { type: mimeType });
+          setVideoBlob(blob);
+          const url = URL.createObjectURL(blob);
+          setVideoUrl(url);
+        }
+      };
+      
+      setMediaRecorder(mediaRecorder);
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing media devices:', error);
+      alert('카메라와 마이크 접근 권한이 필요합니다.');
+    }
+  };
 
   return (
     <div style={{
