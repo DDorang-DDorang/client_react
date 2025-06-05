@@ -4,18 +4,23 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { loginSuccess } from '../store/slices/authSlice';
+import { useUserStore } from '../store/userStore';
 
 const OAuth2RedirectHandler = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const { setUser } = useUserStore();
 
     useEffect(() => {
         const handleOAuth2Callback = async () => {
             try {
                 const params = new URLSearchParams(location.search);
-                const accessToken = params.get('access_token');
+                // 서버에서 'token' 파라미터로 보내므로 이를 확인
+                const accessToken = params.get('token');
                 const error = params.get('error');
+                const email = params.get('email');
+                const name = params.get('name');
 
                 if (error) {
                     console.error('OAuth2 error:', error);
@@ -29,28 +34,24 @@ const OAuth2RedirectHandler = () => {
                     return;
                 }
 
-                // 액세스 토큰만 localStorage에 저장 (리프레시 토큰은 저장하지 않음)
+                // 액세스 토큰을 localStorage에 저장
                 localStorage.setItem('token', accessToken);
 
-                // 토큰에서 사용자 정보 추출
-                let userInfo = null;
-                try {
-                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                    const email = payload.sub;
-                    userInfo = {
-                        email: email,
-                        name: email.split('@')[0],
-                        provider: 'GOOGLE'
-                    };
-                } catch (e) {
-                    console.warn('Could not extract user info from token');
-                }
+                // 사용자 정보 구성 (서버에서 전달받은 정보 사용)
+                const userInfo = {
+                    email: email || 'unknown@example.com',
+                    name: name || 'Unknown User',
+                    provider: 'GOOGLE'
+                };
 
                 // Redux 상태 업데이트
                 dispatch(loginSuccess({
                     accessToken,
                     user: userInfo
                 }));
+
+                // Zustand 스토어도 업데이트
+                setUser(userInfo);
 
                 // 메인 페이지로 리다이렉트
                 navigate('/dashboard');
@@ -61,7 +62,7 @@ const OAuth2RedirectHandler = () => {
         };
 
         handleOAuth2Callback();
-    }, [location, navigate, dispatch]);
+    }, [location, navigate, dispatch, setUser]);
 
     return (
         <Box

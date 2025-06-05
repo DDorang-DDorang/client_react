@@ -311,14 +311,63 @@ const Login = () => {
 
     try {
       // Login with Redux (handles authentication)
-      await dispatch(login({ email, password })).unwrap();
+      const result = await dispatch(login({ email, password })).unwrap();
       
-      // After successful login, fetch user info with Zustand
-      await fetchUserInfo();
+      // Get token from Redux result instead of localStorage immediately
+      const token = result.accessToken || result.access_token;
+      
+      if (token) {
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            // JWT 토큰인 경우 (일반 로그인)
+            const payload = JSON.parse(atob(parts[1]));
+            const userData = {
+              email: payload.sub || payload.email || email,
+              name: payload.name || email.split('@')[0],
+              provider: 'LOCAL'
+            };
+            
+            // Set user info directly without API call
+            const { setUser } = useUserStore.getState();
+            setUser(userData);
+            
+            console.log('일반 로그인 성공, 사용자 정보 설정 완료:', userData);
+          } else {
+            // Google OAuth 토큰인 경우에만 fetchUserInfo 호출 (하지만 일반 로그인에서는 발생하지 않음)
+            console.log('Unexpected: Google OAuth token in regular login');
+          }
+        } catch (tokenError) {
+          console.error('Token parsing error:', tokenError);
+          // 토큰 파싱 실패 시 기본 사용자 정보 설정
+          const userData = {
+            email: email,
+            name: email.split('@')[0],
+            provider: 'LOCAL'
+          };
+          
+          const { setUser } = useUserStore.getState();
+          setUser(userData);
+          
+          console.log('토큰 파싱 실패, 기본 사용자 정보 설정:', userData);
+        }
+      } else {
+        console.error('No token received from login');
+        // 토큰이 없어도 기본 사용자 정보는 설정
+        const userData = {
+          email: email,
+          name: email.split('@')[0],
+          provider: 'LOCAL'
+        };
+        
+        const { setUser } = useUserStore.getState();
+        setUser(userData);
+      }
       
       // Navigation happens in the useEffect that watches isAuthenticated
     } catch (err) {
       // Error is already handled in the reducer
+      console.error('Login error:', err);
     }
   };
 

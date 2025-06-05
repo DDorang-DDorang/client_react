@@ -9,16 +9,22 @@ export const useUserStore = create((set) => ({
     fetchUserInfo: async () => {
         set({ error: null });
         try {
-            const response = await authService.getCurrentUser();
+            const userData = await authService.getCurrentUser();
+            console.log('getUserData 응답:', userData);
+            
             const user = {
-                id: response.userId,
-                name: response.name,
-                email: response.email,
-                provider: response.provider || 'LOCAL' // Provider 정보가 없는 경우 기본값
+                id: userData.userId || userData.id || userData.email, // userId를 우선으로 사용
+                userId: userData.userId || userData.id, // 백엔드 호환성을 위해 추가
+                name: userData.name,
+                email: userData.email,
+                provider: userData.provider || 'LOCAL'
             };
-            set({ user});
+            
+            console.log('매핑된 사용자 정보:', user);
+            set({ user });
             return user;
         } catch (error) {
+            console.error('fetchUserInfo 오류:', error);
             set({ error: error.message || '사용자 정보를 불러오는데 실패했습니다.'});
             throw error;
         }
@@ -26,12 +32,17 @@ export const useUserStore = create((set) => ({
 
     // 사용자 정보 직접 설정 (로그인 성공 시 사용)
     setUser: (userData) => {
+        console.log('setUser 호출됨:', userData);
+        
         const user = {
-            id: userData.userId || userData.id,
+            id: userData.userId || userData.id || userData.email,
+            userId: userData.userId || userData.id, // 백엔드 호환성을 위해 추가
             name: userData.name,
             email: userData.email,
             provider: userData.provider || 'LOCAL'
         };
+        
+        console.log('setUser 결과:', user);
         set({ user, error: null });
     },
 

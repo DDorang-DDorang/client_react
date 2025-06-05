@@ -6,6 +6,7 @@ import SignUp from '../pages/SignUp';
 import ForgotPassword from '../pages/ForgotPassword';
 import OAuth2RedirectHandler from '../pages/OAuth2RedirectHandler';
 import Dashboard from '../pages/Dashboard';
+import VideoAnalysis from '../pages/VideoAnalysis';
 import PrivateRoute from './PrivateRoute';
 
 const AppRoutes = () => {
@@ -29,6 +30,14 @@ const AppRoutes = () => {
                 element={
                     <PrivateRoute>
                         <Dashboard />
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/video-analysis/:presentationId"
+                element={
+                    <PrivateRoute>
+                        <VideoAnalysis />
                     </PrivateRoute>
                 }
             />

@@ -1,11 +1,21 @@
 import React, { useState, useRef } from 'react';
 import { validateVideoFile } from '../utils/cameraUtils';
+import videoAnalysisService from '../api/videoAnalysisService';
 
-const VideoUploader = ({ onFileUpload, onClose }) => {
+const VideoUploader = ({ 
+  onFileUpload, 
+  onClose, 
+  presentationId = null, 
+  enableAnalysis = false, 
+  onAnalysisComplete = null 
+}) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [success, setSuccess] = useState('');
   
   const fileInputRef = useRef(null);
 
@@ -38,9 +48,22 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
 
   const handleFileSelection = (file) => {
     try {
-      validateVideoFile(file);
+      // 비디오 파일 유효성 검사
+      const validTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/webm', 'video/ogg'];
+      const maxSize = enableAnalysis ? 100 * 1024 * 1024 : 500 * 1024 * 1024; // 분석용은 100MB, 일반은 500MB
+
+      if (!validTypes.includes(file.type)) {
+        throw new Error('지원하는 비디오 형식: MP4, AVI, MOV, WMV, WebM, OGG');
+      }
+
+      if (file.size > maxSize) {
+        const maxSizeMB = maxSize / (1024 * 1024);
+        throw new Error(`파일 크기는 ${maxSizeMB}MB 이하여야 합니다.`);
+      }
+
       setSelectedFile(file);
       setError(null);
+      setSuccess('');
     } catch (err) {
       setError(err.message);
       setSelectedFile(null);
@@ -51,12 +74,139 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
     if (!selectedFile) return;
     
     setIsUploading(true);
+    setError('');
+    setSuccess('');
+    
     try {
-      await onFileUpload(selectedFile);
+      // 진행률 시뮬레이션
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 300);
+
+      // 파일 업로드
+      const uploadResult = await onFileUpload(selectedFile);
+      
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      
+      // 분석 기능이 활성화되고 업로드 결과가 있으면 자동으로 분석 시작
+      if (enableAnalysis && uploadResult && uploadResult.id) {
+        setIsAnalyzing(true);
+        
+        try {
+          const analysisResult = await videoAnalysisService.analyzeVideo(uploadResult.id, selectedFile);
+          
+          console.log('VideoUploader - 분석 결과 구조:', analysisResult);
+          
+          if (analysisResult.success) {
+            setSuccess('비디오 업로드 및 분석이 완료되었습니다!');
+            
+            if (onAnalysisComplete) {
+              // 분석 완료 후 필요한 모든 데이터 전달
+              // 서버 응답 구조에 따라 분석 데이터 추출
+              const actualAnalysisData = analysisResult.data?.analysisResult || 
+                                        analysisResult.data || 
+                                        analysisResult.analysisResult ||
+                                        analysisResult;
+              
+              console.log('=== VideoUploader: 분석 성공 ===');
+              console.log('uploadResult:', uploadResult);
+              console.log('analysisResult:', analysisResult);
+              console.log('actualAnalysisData:', actualAnalysisData);
+              console.log('onAnalysisComplete 함수 존재:', typeof onAnalysisComplete);
+              
+              // 모달 닫기 (페이지 이동 전에)
+              console.log('VideoUploader: 모달 닫기 호출 중...');
+              console.log('VideoUploader: 현재 URL:', window.location.href);
+              onClose();
+              
+              // 약간의 지연 후 콜백 호출 (모달 닫힘 애니메이션 고려)
+              setTimeout(() => {
+                console.log('=== VideoUploader: onAnalysisComplete 콜백 호출 시작 ===');
+                console.log('VideoUploader: 콜백 호출 직전 URL:', window.location.href);
+                const callbackData = {
+                  presentationId: uploadResult.id,
+                  presentationData: uploadResult,
+                  analysisData: actualAnalysisData
+                };
+                console.log('VideoUploader: 콜백에 전달할 데이터:', callbackData);
+                console.log('VideoUploader: onAnalysisComplete 함수 호출 중...');
+                onAnalysisComplete(callbackData);
+                console.log('=== VideoUploader: onAnalysisComplete 콜백 호출 완료 ===');
+                console.log('VideoUploader: 콜백 호출 후 URL:', window.location.href);
+              }, 100);
+            }
+          } else {
+            setError(`분석 실패: ${analysisResult.error}`);
+            
+            // 분석 실패 시에도 콜백 호출 (에러 정보와 함께)
+            if (onAnalysisComplete) {
+              console.log('=== VideoUploader: 분석 실패 ===');
+              console.log('analysisResult:', analysisResult);
+              
+              // 모달 닫기
+              onClose();
+              
+              setTimeout(() => {
+                console.log('=== onAnalysisComplete 실패 콜백 호출 ===');
+                const callbackData = {
+                  presentationId: uploadResult.id,
+                  presentationData: uploadResult,
+                  analysisError: analysisResult.error
+                };
+                console.log('실패 콜백에 전달할 데이터:', callbackData);
+                onAnalysisComplete(callbackData);
+              }, 100);
+            }
+          }
+        } catch (analysisError) {
+          console.error('분석 오류:', analysisError);
+          setError('분석 중 오류가 발생했습니다.');
+          
+          // 분석 오류 시에도 콜백 호출
+          if (onAnalysisComplete) {
+            console.log('=== VideoUploader: 분석 catch 오류 ===');
+            console.log('analysisError:', analysisError);
+            console.log('uploadResult:', uploadResult);
+            
+            // 모달 닫기
+            onClose();
+            
+            setTimeout(() => {
+              console.log('=== onAnalysisComplete catch 오류 콜백 호출 ===');
+              const callbackData = {
+                presentationId: uploadResult.id,
+                presentationData: uploadResult,
+                analysisError: '분석 중 오류가 발생했습니다.'
+              };
+              console.log('catch 오류 콜백에 전달할 데이터:', callbackData);
+              onAnalysisComplete(callbackData);
+            }, 100);
+          }
+        } finally {
+          setIsAnalyzing(false);
+        }
+      } else {
+        setSuccess('비디오 업로드가 완료되었습니다!');
+      }
+      
+      // 성공 후 파일 선택 초기화
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
     } catch (err) {
       setError(err.message || '업로드 중 오류가 발생했습니다.');
     } finally {
       setIsUploading(false);
+      setTimeout(() => setUploadProgress(0), 2000);
     }
   };
 
@@ -76,6 +226,9 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
     if (fileType.includes('mov')) return '🎥';
     return '📺';
   };
+
+  const isProcessing = isUploading || isAnalyzing;
+  const currentStatus = isAnalyzing ? '분석 중...' : isUploading ? '업로드 중...' : '';
 
   return (
     <div style={{
@@ -111,16 +264,18 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
             fontWeight: '700',
             color: '#000000'
           }}>
-            비디오 파일 업로드
+            {enableAnalysis ? '비디오 분석' : '비디오 파일 업로드'}
           </h2>
           <button
             onClick={onClose}
+            disabled={isProcessing}
             style={{
               background: 'none',
               border: 'none',
               fontSize: '24px',
-              cursor: 'pointer',
-              color: '#666666'
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              color: '#666666',
+              opacity: isProcessing ? 0.5 : 1
             }}
           >
             ×
@@ -141,28 +296,43 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
           </div>
         )}
 
+        {/* 성공 메시지 */}
+        {success && (
+          <div style={{
+            backgroundColor: '#efe',
+            color: '#2a5',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            fontSize: '14px'
+          }}>
+            {success}
+          </div>
+        )}
+
         {/* 드래그 앤 드롭 영역 */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isProcessing && fileInputRef.current?.click()}
           style={{
             border: `2px dashed ${isDragOver ? '#000000' : '#cccccc'}`,
             borderRadius: '12px',
             padding: '48px 24px',
             textAlign: 'center',
-            cursor: 'pointer',
+            cursor: isProcessing ? 'not-allowed' : 'pointer',
             backgroundColor: isDragOver ? '#f8f9fa' : '#ffffff',
             transition: 'all 0.2s ease',
-            marginBottom: '24px'
+            marginBottom: '24px',
+            opacity: isProcessing ? 0.6 : 1
           }}
         >
           <div style={{
             fontSize: '48px',
             marginBottom: '16px'
           }}>
-            🎬
+            {enableAnalysis ? '🎤' : '🎬'}
           </div>
           
           <div style={{
@@ -179,7 +349,10 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
             color: '#666666',
             marginBottom: '16px'
           }}>
-            MP4, WebM, OGG, AVI, MOV, WMV 파일 지원 (최대 500MB)
+            {enableAnalysis 
+              ? 'MP4, AVI, MOV, WMV 파일 지원 (최대 100MB)' 
+              : 'MP4, WebM, OGG, AVI, MOV, WMV 파일 지원 (최대 500MB)'
+            }
           </div>
 
           <input
@@ -187,9 +360,43 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
             type="file"
             accept="video/*"
             onChange={handleFileInputChange}
+            disabled={isProcessing}
             style={{ display: 'none' }}
           />
         </div>
+
+        {/* 업로드/분석 진행 상태 */}
+        {isProcessing && (
+          <div style={{
+            backgroundColor: '#e3f2fd',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '16px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontSize: '14px',
+              color: '#1976d2',
+              marginBottom: '8px'
+            }}>
+              {currentStatus} {uploadProgress}%
+            </div>
+            <div style={{
+              width: '100%',
+              height: '4px',
+              backgroundColor: '#bbdefb',
+              borderRadius: '2px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${uploadProgress}%`,
+                height: '100%',
+                backgroundColor: '#1976d2',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+        )}
 
         {/* 선택된 파일 정보 */}
         {selectedFile && (
@@ -228,23 +435,26 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
                 </div>
               </div>
               
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedFile(null);
-                  setError(null);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '18px',
-                  cursor: 'pointer',
-                  color: '#666666',
-                  padding: '4px'
-                }}
-              >
-                ×
-              </button>
+              {!isProcessing && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFile(null);
+                    setError(null);
+                    setSuccess('');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '18px',
+                    cursor: 'pointer',
+                    color: '#666666',
+                    padding: '4px'
+                  }}
+                >
+                  ×
+                </button>
+              )}
             </div>
 
             {/* 비디오 미리보기 */}
@@ -265,39 +475,6 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
           </div>
         )}
 
-        {/* 업로드 진행 상태 */}
-        {isUploading && (
-          <div style={{
-            backgroundColor: '#e3f2fd',
-            borderRadius: '8px',
-            padding: '12px',
-            marginBottom: '16px',
-            textAlign: 'center'
-          }}>
-            <div style={{
-              fontSize: '14px',
-              color: '#1976d2',
-              marginBottom: '8px'
-            }}>
-              업로드 중...
-            </div>
-            <div style={{
-              width: '100%',
-              height: '4px',
-              backgroundColor: '#bbdefb',
-              borderRadius: '2px',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: '100%',
-                height: '100%',
-                backgroundColor: '#1976d2',
-                animation: 'loading 1.5s ease-in-out infinite'
-              }} />
-            </div>
-          </div>
-        )}
-
         {/* 버튼들 */}
         <div style={{
           display: 'flex',
@@ -306,7 +483,7 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
         }}>
           <button
             onClick={onClose}
-            disabled={isUploading}
+            disabled={isProcessing}
             style={{
               padding: '12px 24px',
               backgroundColor: '#666666',
@@ -315,8 +492,8 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
               borderRadius: '8px',
               fontSize: '16px',
               fontWeight: '500',
-              cursor: isUploading ? 'not-allowed' : 'pointer',
-              opacity: isUploading ? 0.6 : 1
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              opacity: isProcessing ? 0.6 : 1
             }}
           >
             취소
@@ -324,19 +501,19 @@ const VideoUploader = ({ onFileUpload, onClose }) => {
           
           <button
             onClick={handleUpload}
-            disabled={!selectedFile || isUploading}
+            disabled={!selectedFile || isProcessing}
             style={{
               padding: '12px 24px',
-              backgroundColor: selectedFile && !isUploading ? '#28a745' : '#cccccc',
+              backgroundColor: selectedFile && !isProcessing ? '#28a745' : '#cccccc',
               color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
               fontSize: '16px',
               fontWeight: '500',
-              cursor: selectedFile && !isUploading ? 'pointer' : 'not-allowed'
+              cursor: selectedFile && !isProcessing ? 'pointer' : 'not-allowed'
             }}
           >
-            {isUploading ? '업로드 중...' : '업로드'}
+            {isProcessing ? currentStatus : (enableAnalysis ? '분석 시작' : '업로드')}
           </button>
         </div>
       </div>

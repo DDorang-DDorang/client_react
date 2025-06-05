@@ -13,7 +13,12 @@ function App() {
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
+        <Router
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}
+        >
           <AuthProvider>
             <AppRoutes />
           </AuthProvider>
@@ -23,4 +28,4 @@ function App() {
   );
 }
 
-export default App;
+export default App; 

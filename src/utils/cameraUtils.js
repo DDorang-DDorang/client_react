@@ -6,9 +6,8 @@ export class CameraRecorder {
     this.videoChunks = [];
     this.isRecording = false;
     this.stream = null;
+    this.recordingMimeType = null;
   }
-
-
 
   async startRecording() {
     try {
@@ -29,28 +28,38 @@ export class CameraRecorder {
       
       console.log('미디어 스트림 획득 성공');
       
-      // MediaRecorder 설정 - 성능 최적화된 코덱 선택
+      // MediaRecorder 설정 - MP4 우선으로 변경
       let options = {};
+      let mimeType = 'video/webm'; // 기본값
       
-      // 성능 우선 코덱 선택 (끊김 현상 최소화)
-      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-        options.mimeType = 'video/webm;codecs=vp8,opus'; // VP8이 더 안정적
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
-        options.mimeType = 'video/webm;codecs=h264,opus';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-        options.mimeType = 'video/webm;codecs=vp9,opus';
-      } else if (MediaRecorder.isTypeSupported('video/webm')) {
-        options.mimeType = 'video/webm';
+      // MP4 코덱 우선 선택
+      if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264,aac')) {
+        options.mimeType = 'video/mp4;codecs=h264,aac';
+        mimeType = 'video/mp4';
       } else if (MediaRecorder.isTypeSupported('video/mp4')) {
         options.mimeType = 'video/mp4';
+        mimeType = 'video/mp4';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+        options.mimeType = 'video/webm;codecs=h264,opus';
+        mimeType = 'video/webm';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        options.mimeType = 'video/webm;codecs=vp8,opus';
+        mimeType = 'video/webm';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+        options.mimeType = 'video/webm;codecs=vp9,opus';
+        mimeType = 'video/webm';
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options.mimeType = 'video/webm';
+        mimeType = 'video/webm';
       }
       
-      // 비트레이트 최적화 - 끊김 현상 방지
-      options.audioBitsPerSecond = 96000; // 96kbps (낮춤)
-      options.videoBitsPerSecond = 1500000; // 1.5Mbps (낮춤)
+      // 비트레이트 최적화
+      options.audioBitsPerSecond = 128000; // 128kbps
+      options.videoBitsPerSecond = 2500000; // 2.5Mbps
       
       this.mediaRecorder = new MediaRecorder(this.stream, options);
       this.videoChunks = [];
+      this.recordingMimeType = mimeType; // MIME 타입 저장
       
       // 오디오 트랙 확인
       const audioTracks = this.stream.getAudioTracks();
@@ -59,6 +68,7 @@ export class CameraRecorder {
       console.log('오디오 트랙:', audioTracks.length > 0 ? '활성화됨' : '비활성화됨');
       console.log('비디오 트랙:', videoTracks.length > 0 ? '활성화됨' : '비활성화됨');
       console.log('사용된 MIME 타입:', options.mimeType);
+      console.log('출력 형식:', mimeType);
       
       if (audioTracks.length === 0) {
         console.warn('오디오 트랙이 없습니다. 마이크 권한을 확인해주세요.');
@@ -114,7 +124,7 @@ export class CameraRecorder {
       }
 
       this.mediaRecorder.onstop = () => {
-        const videoBlob = new Blob(this.videoChunks, { type: 'video/webm' });
+        const videoBlob = new Blob(this.videoChunks, { type: this.recordingMimeType });
         const videoUrl = URL.createObjectURL(videoBlob);
         
         // 스트림 정리

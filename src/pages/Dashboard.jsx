@@ -4,11 +4,34 @@ import CollapsibleSidebar from '../components/CollapsibleSidebar';
 import Navbar from '../components/Navbar';
 import VideoUploader from '../components/VideoUploader';
 import { CameraRecorder as CameraRecorderUtil, formatTime } from '../utils/cameraUtils';
-import authService from '../api/authService';
+import topicService from '../api/topicService';
+import videoAnalysisService from '../api/videoAnalysisService';
+import { useUserStore } from '../store/userStore';
+import { useTopicStore } from '../store/topicStore';
+import useAuthValidation from '../hooks/useAuthValidation';
 
 const Dashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { user } = useUserStore();
+    const { 
+        currentTopic, 
+        setCurrentTopic, 
+        addPresentation,
+        topics 
+    } = useTopicStore();
+
+    // useAuthValidation hook 사용
+    const {
+        currentToken,
+        isRefreshing,
+        refreshMessage,
+        loadCurrentToken,
+        refreshAccessToken,
+        copyTokenToClipboard,
+        setRefreshMessage
+    } = useAuthValidation();
+
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [showUploader, setShowUploader] = useState(false);
     const [videoFiles, setVideoFiles] = useState([]);
@@ -17,13 +40,21 @@ const Dashboard = () => {
     const [recordingTime, setRecordingTime] = useState(0);
     const [error, setError] = useState(null);
     const [showTokenPanel, setShowTokenPanel] = useState(false);
-    const [currentToken, setCurrentToken] = useState('');
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [refreshMessage, setRefreshMessage] = useState('');
+    
+    // 토픽 선택 관련 상태
+    const [showTopicSelector, setShowTopicSelector] = useState(false);
+    const [selectedTopicForUpload, setSelectedTopicForUpload] = useState(null);
     
     const videoRef = useRef(null);
     const recorderRef = useRef(null);
     const timerRef = useRef(null);
+
+    // URL state에서 토픽 정보 가져오기
+    useEffect(() => {
+        if (location.state?.selectedTopic) {
+            setCurrentTopic(location.state.selectedTopic);
+        }
+    }, [location.state]);
 
     const handleNavigation = (path) => {
         navigate(path);
@@ -33,127 +64,12 @@ const Dashboard = () => {
         setIsSidebarCollapsed(!isSidebarCollapsed);
     };
 
-    // 토큰 관련 함수들
-    const loadCurrentToken = () => {
-        const token = authService.getToken();
-        if (token) {
-            setCurrentToken(token);
-            
-            // 토큰 정보 분석
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const exp = payload.exp;
-                const currentTime = Math.floor(Date.now() / 1000);
-                const timeLeft = exp - currentTime;
-                
-                if (timeLeft > 0) {
-                    const minutes = Math.floor(timeLeft / 60);
-                    const seconds = timeLeft % 60;
-                    console.log(`토큰 만료까지: ${minutes}분 ${seconds}초`);
-                    setRefreshMessage(`토큰 만료까지: ${minutes}분 ${seconds}초`);
-                } else {
-                    console.log('토큰이 만료되었습니다');
-                    setRefreshMessage('토큰이 만료되었습니다');
-                }
-            } catch (e) {
-                console.error('토큰 분석 실패:', e);
-                setRefreshMessage('토큰 형식 오류');
-            }
-        } else {
-            setCurrentToken('토큰이 없습니다');
-            setRefreshMessage('로그인이 필요합니다');
-        }
-    };
-
-    const refreshAccessToken = async () => {
-        setIsRefreshing(true);
-        setRefreshMessage('');
-        
-        try {
-            console.log('토큰 재발급 시도 중...');
-            
-            // 현재 토큰에서 이메일 추출
-            const currentTokenValue = authService.getToken();
-            if (!currentTokenValue) {
-                setRefreshMessage('현재 토큰이 없습니다. 다시 로그인해주세요.');
-                setIsRefreshing(false);
-                return;
-            }
-
-            let email = null;
-            try {
-                const payload = JSON.parse(atob(currentTokenValue.split('.')[1]));
-                email = payload.sub;
-                console.log('토큰에서 추출한 이메일:', email);
-            } catch (e) {
-                console.error('토큰 파싱 실패:', e);
-                setRefreshMessage('토큰 형식이 올바르지 않습니다.');
-                setIsRefreshing(false);
-                return;
-            }
-
-            if (!email) {
-                setRefreshMessage('토큰에서 이메일을 찾을 수 없습니다.');
-                setIsRefreshing(false);
-                return;
-            }
-
-            // 리프레시 토큰으로 새 액세스 토큰 요청
-            const response = await fetch(`http://localhost:8080/api/oauth2/refresh?email=${encodeURIComponent(email)}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include'
-            });
-
-            console.log('응답 상태:', response.status);
-
-            if (response.status === 200) {
-                const data = await response.json();
-                if (data.accessToken) {
-                    localStorage.setItem('token', data.accessToken);
-                    setCurrentToken(data.accessToken);
-                    setRefreshMessage('토큰이 성공적으로 재발급되었습니다.');
-                    console.log('토큰 재발급 성공');
-                } else {
-                    setRefreshMessage('서버에서 새 토큰을 받지 못했습니다.');
-                }
-            } else if (response.status === 401) {
-                const errorData = await response.json();
-                if (errorData.error === 'refresh_token_expired') {
-                    setRefreshMessage('리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.');
-                } else {
-                    setRefreshMessage('토큰 재발급에 실패했습니다.');
-                }
-            } else {
-                setRefreshMessage(`토큰 재발급 실패 (${response.status})`);
-            }
-
-        } catch (error) {
-            console.error('Token refresh error:', error);
-            setRefreshMessage(`토큰 재발급 실패: ${error.message}`);
-        } finally {
-            setIsRefreshing(false);
-        }
-    };
-
-    const copyTokenToClipboard = async () => {
-        try {
-            await navigator.clipboard.writeText(currentToken);
-            setRefreshMessage('토큰이 클립보드에 복사되었습니다.');
-            setTimeout(() => setRefreshMessage(''), 3000);
-        } catch (error) {
-            setRefreshMessage('클립보드 복사에 실패했습니다.');
-        }
-    };
-
     // 컴포넌트 마운트 시 현재 토큰 로드
     useEffect(() => {
         if (showTokenPanel) {
             loadCurrentToken();
         }
-    }, [showTokenPanel]);
+    }, [showTokenPanel, loadCurrentToken]);
 
     // 카메라 녹화 관련 함수들
     useEffect(() => {
@@ -213,24 +129,44 @@ const Dashboard = () => {
         setCurrentStream(null);
         
         if (result) {
-            // 녹화 완료 처리
-            const newVideoFile = {
-                id: Date.now(),
-                name: `camera_recording_${Date.now()}.webm`,
-                blob: result.blob,
-                url: result.url,
-                type: 'recording',
-                createdAt: new Date()
-            };
-            
-            setVideoFiles(prev => [...prev, newVideoFile]);
-            
-            // 분석 페이지로 이동
-            navigate('/video-analysis', { 
-                state: { 
-                    videoData: newVideoFile 
-                } 
-            });
+            // 토픽이 선택되어 있는지 확인
+            if (!currentTopic) {
+                setError('토픽을 선택해주세요.');
+                setShowTopicSelector(true);
+                return;
+            }
+
+            // 녹화 완료 처리 - 서버에 저장
+            try {
+                const presentationData = {
+                    title: `발표 녹화 ${new Date().toLocaleString()}`,
+                    type: 'recording',
+                    duration: recordingTime
+                };
+
+                const uploadResult = await topicService.createPresentation(
+                    currentTopic.id,
+                    presentationData,
+                    result.blob
+                );
+
+                if (uploadResult.success) {
+                    addPresentation(uploadResult.data);
+                    
+                    // 분석 페이지로 이동
+                    navigate(`/video-analysis/${uploadResult.data.id}`, { 
+                        state: { 
+                            presentationData: uploadResult.data,
+                            topicData: currentTopic
+                        } 
+                    });
+                } else {
+                    setError(`프레젠테이션 저장 실패: ${uploadResult.error}`);
+                }
+            } catch (error) {
+                console.error('프레젠테이션 저장 실패:', error);
+                setError('프레젠테이션을 저장하는 중 오류가 발생했습니다.');
+            }
         }
     };
 
@@ -246,35 +182,96 @@ const Dashboard = () => {
         setError(null);
     };
 
-
-
     const handleFileUpload = async (file) => {
         try {
-            // 여기서 서버로 파일을 업로드할 수 있습니다
+            // 토픽이 선택되어 있는지 확인
+            if (!currentTopic) {
+                setError('토픽을 선택해주세요.');
+                setShowTopicSelector(true);
+                setSelectedTopicForUpload(file);
+                return;
+            }
+
             console.log('파일 업로드:', file);
             
-            // 임시로 로컬 상태에 저장
-            const newVideoFile = {
-                id: Date.now(),
-                name: file.name,
-                file: file,
-                url: URL.createObjectURL(file),
+            const presentationData = {
+                title: file.name.replace(/\.[^/.]+$/, ""), // 확장자 제거
                 type: 'upload',
-                createdAt: new Date()
+                originalFileName: file.name
             };
-            
-            setVideoFiles(prev => [...prev, newVideoFile]);
-            setShowUploader(false);
-            
-            // 분석 페이지로 이동
-            navigate('/video-analysis', { 
-                state: { 
-                    videoData: newVideoFile 
-                } 
-            });
+
+            const uploadResult = await topicService.createPresentation(
+                currentTopic.id,
+                presentationData,
+                file
+            );
+
+            if (uploadResult.success) {
+                addPresentation(uploadResult.data);
+                setShowUploader(false);
+                
+                // 업로드 성공 시 presentationId 반환 (VideoUploader에서 분석 처리)
+                return uploadResult.data;
+            } else {
+                throw new Error(uploadResult.error);
+            }
         } catch (error) {
             console.error('파일 업로드 실패:', error);
             throw new Error('파일 업로드 중 오류가 발생했습니다.');
+        }
+    };
+
+    // 비디오 분석 완료 핸들러
+    const handleAnalysisComplete = (data) => {
+        console.log('=== Dashboard: handleAnalysisComplete 호출됨 ===');
+        console.log('Dashboard: 분석 완료 데이터:', data);
+        
+        const { presentationId, presentationData, analysisData, analysisError } = data;
+        
+        if (!presentationId) {
+            console.error('Dashboard: presentationId가 없습니다');
+            setError('분석 결과를 불러올 수 없습니다. 다시 시도해주세요.');
+            return;
+        }
+
+        // 상태 정보를 localStorage에 저장
+        const stateData = {
+            presentationData: presentationData,
+            topicData: currentTopic,
+            analysisData: analysisData,
+            analysisError: analysisError,
+            timestamp: Date.now(),
+            presentationId: presentationId
+        };
+        
+        try {
+            localStorage.setItem('videoAnalysisState', JSON.stringify(stateData));
+            console.log('Dashboard: 상태 데이터를 localStorage에 저장:', stateData);
+            
+            // URL에 presentationId를 포함하여 이동
+            navigate(`/video-analysis/${presentationId}`, {
+                state: stateData,
+                replace: false
+            });
+        } catch (error) {
+            console.error('Dashboard: 네비게이션 오류:', error);
+            setError('페이지 이동 중 오류가 발생했습니다. 다시 시도해주세요.');
+        }
+    };
+
+    const handleTopicSelect = async (topicId) => {
+        const topic = topics.find(t => t.id === topicId);
+        setCurrentTopic(topic);
+        setShowTopicSelector(false);
+
+        // 선택한 토픽으로 대기 중인 파일 업로드 처리
+        if (selectedTopicForUpload) {
+            try {
+                await handleFileUpload(selectedTopicForUpload);
+                setSelectedTopicForUpload(null);
+            } catch (error) {
+                setError(error.message);
+            }
         }
     };
 
@@ -303,6 +300,24 @@ const Dashboard = () => {
             <CollapsibleSidebar 
                 isCollapsed={isSidebarCollapsed}
             />
+
+            {/* 현재 선택된 토픽 표시 */}
+            {currentTopic && (
+                <div style={{
+                    position: 'absolute',
+                    left: isSidebarCollapsed ? 362 : 565,
+                    top: 80,
+                    backgroundColor: '#e3f2fd',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#1976d2',
+                    transition: 'left 0.3s ease-in-out'
+                }}>
+                    📁 {currentTopic.title}
+                </div>
+            )}
 
             {/* Main Video Area - 카메라 녹화 표시 영역 */}
             <div style={{
@@ -397,17 +412,12 @@ const Dashboard = () => {
             {/* Upload Button - enhanced with click handler */}
             <div 
                 onClick={() => setShowUploader(true)}
-                data-has-icon-end="false" 
-                data-has-icon-start="false" 
-                data-size="Medium" 
-                data-state="Default" 
-                data-variant="Primary" 
                 style={{
                     width: 91, 
                     height: 45, 
                     padding: 12, 
                     left: isSidebarCollapsed ? 962 : 1165, 
-                    top: 680, // Adjusted for smaller navbar height
+                    top: 680,
                     position: 'absolute', 
                     background: '#2C2C2C', 
                     overflow: 'hidden', 
@@ -448,17 +458,12 @@ const Dashboard = () => {
             {/* Record Button - enhanced with click handler */}
             <div 
                 onClick={isRecording ? stopRecording : startRecording}
-                data-has-icon-end="false" 
-                data-has-icon-start="false" 
-                data-size="Medium" 
-                data-state="Default" 
-                data-variant="Primary" 
                 style={{
                     width: 85, 
                     height: 45, 
                     padding: 12, 
                     left: isSidebarCollapsed ? 868 : 1070, 
-                    top: 680, // Adjusted for smaller navbar height
+                    top: 680,
                     position: 'absolute', 
                     background: isRecording ? '#000000' : '#EC221F', 
                     overflow: 'hidden', 
@@ -593,6 +598,145 @@ const Dashboard = () => {
                     Token
                 </div>
             </div>
+
+            {/* 토픽 선택 모달 */}
+            {showTopicSelector && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 10000
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '16px',
+                        padding: '32px',
+                        width: '400px',
+                        maxWidth: '90vw',
+                        boxShadow: '0px 20px 60px rgba(0, 0, 0, 0.3)'
+                    }}>
+                        <h2 style={{
+                            margin: '0 0 24px 0',
+                            fontSize: '20px',
+                            fontWeight: '700',
+                            color: '#000000',
+                            fontFamily: 'Inter, sans-serif'
+                        }}>
+                            토픽 선택
+                        </h2>
+                        
+                        <div style={{
+                            marginBottom: '16px',
+                            fontSize: '14px',
+                            color: '#666666'
+                        }}>
+                            영상을 저장할 토픽을 선택하세요:
+                        </div>
+
+                        <div style={{
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            marginBottom: '24px'
+                        }}>
+                            {topics.length > 0 ? (
+                                topics.map((topic) => (
+                                    <div
+                                        key={topic.id}
+                                        onClick={() => handleTopicSelect(topic.id)}
+                                        style={{
+                                            padding: '12px 16px',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            transition: 'background-color 0.2s ease',
+                                            border: '1px solid #e9ecef',
+                                            marginBottom: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.backgroundColor = '#f8f9fa';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.backgroundColor = 'transparent';
+                                        }}
+                                    >
+                                        <div style={{
+                                            fontSize: '16px'
+                                        }}>
+                                            {topic.isTeamTopic ? '👥' : '📁'}
+                                        </div>
+                                        <div>
+                                            <div style={{
+                                                fontWeight: '600',
+                                                fontSize: '14px',
+                                                color: '#000000'
+                                            }}>
+                                                {topic.title}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div style={{
+                                    textAlign: 'center',
+                                    padding: '32px 16px',
+                                    color: '#666666'
+                                }}>
+                                    <div style={{
+                                        fontSize: '48px',
+                                        marginBottom: '16px'
+                                    }}>
+                                        📁
+                                    </div>
+                                    <div style={{
+                                        fontSize: '16px',
+                                        fontWeight: '600',
+                                        marginBottom: '8px',
+                                        color: '#000000'
+                                    }}>
+                                        토픽이 없습니다
+                                    </div>
+                                    <div style={{
+                                        fontSize: '14px',
+                                        lineHeight: '1.5'
+                                    }}>
+                                        사이드바의 "Private Topics" 옆 + 버튼을 클릭하여<br />
+                                        새 토픽을 만들어보세요!
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setShowTopicSelector(false);
+                                setSelectedTopicForUpload(null);
+                            }}
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                backgroundColor: '#6c757d',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                fontFamily: 'Inter, sans-serif'
+                            }}
+                        >
+                            취소
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Token Panel */}
             {showTokenPanel && (
@@ -853,6 +997,9 @@ const Dashboard = () => {
                 <VideoUploader
                     onFileUpload={handleFileUpload}
                     onClose={() => setShowUploader(false)}
+                    enableAnalysis={true}
+                    presentationId={null}
+                    onAnalysisComplete={handleAnalysisComplete}
                 />
             )}
             

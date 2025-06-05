@@ -34,7 +34,16 @@ const AppRoutes = () => {
       <Route 
         path="/video-analysis" 
         element={
-          <PrivateRoute>
+          <PrivateRoute skipAuthValidation={true}>
+            <VideoAnalysis />
+          </PrivateRoute>
+        } 
+      />
+
+      <Route 
+        path="/video-analysis/:presentationId" 
+        element={
+          <PrivateRoute skipAuthValidation={true}>
             <VideoAnalysis />
           </PrivateRoute>
         } 

@@ -127,12 +127,15 @@ const authSlice = createSlice({
                 state.error = null;
             })
             .addCase(login.fulfilled, (state, action) => {
-                // localStorage에 토큰 저장
-                localStorage.setItem('token', action.payload.access_token);
+                // localStorage에 토큰 저장 (authService에서 이미 저장하지만 확실히 하기 위해)
+                const token = action.payload.accessToken || action.payload.access_token;
+                if (token) {
+                    localStorage.setItem('token', token);
+                }
                 
                 state.loading = false;
                 state.isAuthenticated = true;
-                state.token = action.payload.access_token;
+                state.token = token;
                 state.user = { email: action.payload.email };
             })
             .addCase(login.rejected, (state, action) => {
