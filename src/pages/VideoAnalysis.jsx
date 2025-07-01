@@ -93,9 +93,21 @@ const VideoAnalysis = () => {
     // 오른쪽 영역 뷰 상태 추가
     const [currentView, setCurrentView] = useState('analysis'); // 'analysis' | 'transcript'
     const [transcriptText, setTranscriptText] = useState('');
+    
+    // AI 대본 수정 관련 상태
+    const [aiEdits, setAiEdits] = useState([]);
+    const [editedTranscript, setEditedTranscript] = useState('');
 
     // 인증 검증 활성화 (토큰 만료 시 로그인으로 리다이렉트)
     useAuthValidation();
+    
+    // AI 수정 상태가 변경될 때마다 편집된 대본 업데이트
+    useEffect(() => {
+        if (aiEdits.length > 0 && transcriptText) {
+            const updatedText = applyAiEdits(transcriptText, aiEdits);
+            setEditedTranscript(updatedText);
+        }
+    }, [aiEdits, transcriptText]);
 
     console.log('=== VideoAnalysis 컴포넌트 렌더링 ===');
     console.log('presentationId:', presentationId);
@@ -517,6 +529,62 @@ const VideoAnalysis = () => {
         return '개선 필요';
     };
 
+    // 목업 AI 수정 데이터 생성
+    const generateMockAiEdits = (originalText) => {
+        const mockEdits = [];
+        
+        // '목 데이터' -> '목업 데이터' 수정 찾기
+        const regex = /목 데이터/g;
+        let match;
+        
+        while ((match = regex.exec(originalText)) !== null) {
+            mockEdits.push({
+                id: `edit_${match.index}`,
+                original: '목 데이터',
+                suggested: '목업 데이터',
+                startIndex: match.index,
+                endIndex: match.index + match[0].length,
+                applied: true // 기본적으로 AI 수정 적용됨
+            });
+        }
+        
+        return mockEdits;
+    };
+    
+    // AI 수정이 적용된 대본 생성
+    const applyAiEdits = (originalText, edits) => {
+        let result = originalText;
+        let offset = 0;
+        
+        // startIndex 순으로 정렬하여 순차적으로 적용
+        const sortedEdits = [...edits].sort((a, b) => a.startIndex - b.startIndex);
+        
+        sortedEdits.forEach(edit => {
+            if (edit.applied) {
+                const start = edit.startIndex + offset;
+                const end = edit.endIndex + offset;
+                const before = result.substring(0, start);
+                const after = result.substring(end);
+                
+                result = before + edit.suggested + after;
+                offset += edit.suggested.length - edit.original.length;
+            }
+        });
+        
+        return result;
+    };
+    
+    // 단어 클릭 처리 (적용/미적용 토글)
+    const handleWordClick = (editId) => {
+        setAiEdits(prevEdits => 
+            prevEdits.map(edit => 
+                edit.id === editId 
+                    ? { ...edit, applied: !edit.applied }
+                    : edit
+            )
+        );
+    };
+    
     // 대본 수정 영역으로 전환
     const handleEditTranscript = () => {
         console.log('=== 대본 수정 영역으로 전환 ===');
@@ -524,6 +592,14 @@ const VideoAnalysis = () => {
         // 현재 대본 데이터를 transcriptText에 설정
         const currentTranscript = finalAnalysisData?.transcription || '대본 데이터가 없습니다.';
         setTranscriptText(currentTranscript);
+        
+        // AI 수정 데이터 생성
+        const mockEdits = generateMockAiEdits(currentTranscript);
+        setAiEdits(mockEdits);
+        
+        // AI 수정이 적용된 대본 생성
+        const aiEditedText = applyAiEdits(currentTranscript, mockEdits);
+        setEditedTranscript(aiEditedText);
         
         // 뷰를 대본 수정으로 전환
         setCurrentView('transcript');
@@ -534,11 +610,71 @@ const VideoAnalysis = () => {
         setCurrentView('analysis');
     };
     
+    // 대본을 렌더링하면서 수정된 단어들을 하이라이트
+    const renderTranscriptWithHighlights = () => {
+        if (!transcriptText || aiEdits.length === 0) {
+            return <span>{editedTranscript || transcriptText}</span>;
+        }
+        
+        const parts = [];
+        let lastIndex = 0;
+        
+        // startIndex 순으로 정렬
+        const sortedEdits = [...aiEdits].sort((a, b) => a.startIndex - b.startIndex);
+        
+        sortedEdits.forEach((edit, index) => {
+            // 수정 전 텍스트 추가
+            if (edit.startIndex > lastIndex) {
+                parts.push(
+                    <span key={`text_${index}`}>
+                        {transcriptText.substring(lastIndex, edit.startIndex)}
+                    </span>
+                );
+            }
+            
+            // 수정된 단어 추가 (클릭 가능)
+            parts.push(
+                <span
+                    key={edit.id}
+                    onClick={() => handleWordClick(edit.id)}
+                    style={{
+                        backgroundColor: edit.applied ? '#4CAF50' : 'transparent',
+                        color: edit.applied ? 'white' : 'black',
+                        textDecoration: edit.applied ? 'none' : 'underline',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                        borderRadius: '3px',
+                        transition: 'all 0.2s ease'
+                    }}
+                    title={edit.applied ? `클릭하면 "${edit.original}"로 되돌립니다` : `클릭하면 "${edit.suggested}"로 적용합니다`}
+                >
+                    {edit.applied ? edit.suggested : edit.original}
+                </span>
+            );
+            
+            lastIndex = edit.endIndex;
+        });
+        
+        // 마지막 남은 텍스트 추가
+        if (lastIndex < transcriptText.length) {
+            parts.push(
+                <span key="text_end">
+                    {transcriptText.substring(lastIndex)}
+                </span>
+            );
+        }
+        
+        return <div>{parts}</div>;
+    };
+    
     // 대본 저장
     const handleSaveTranscript = () => {
-        console.log('대본 저장:', transcriptText);
+        const finalTranscript = applyAiEdits(transcriptText, aiEdits);
+        console.log('최종 대본 저장:', finalTranscript);
+        console.log('적용된 수정사항:', aiEdits.filter(edit => edit.applied));
+        
         // TODO: 실제 저장 로직 구현
-        alert('대본이 저장되었습니다!');
+        alert(`대본이 저장되었습니다!\n적용된 수정: ${aiEdits.filter(edit => edit.applied).length}개`);
         setCurrentView('analysis');
     };
 
@@ -892,12 +1028,27 @@ const VideoAnalysis = () => {
                                         marginBottom: '8px',
                                         fontFamily: 'Inter, sans-serif'
                                     }}>
-                                        발표 대본:
+                                        AI 수정된 발표 대본: <span style={{ fontSize: '12px', color: '#666' }}>(수정된 단어를 클릭하여 적용/미적용 변경)</span>
                                     </label>
-                                    <textarea
-                                        value={transcriptText}
-                                        onChange={(e) => setTranscriptText(e.target.value)}
-                                        placeholder="대본을 입력하거나 수정하세요..."
+                                    
+                                    {/* AI 수정 안내 */}
+                                    {aiEdits.length > 0 && (
+                                        <div style={{
+                                            backgroundColor: '#e8f5e8',
+                                            border: '1px solid #4CAF50',
+                                            borderRadius: '6px',
+                                            padding: '12px',
+                                            marginBottom: '12px',
+                                            fontSize: '13px',
+                                            color: '#2e7d2e'
+                                        }}>
+                                            🤖 AI가 {aiEdits.length}개의 수정사항을 제안했습니다. 
+                                            <span style={{ color: '#4CAF50', fontWeight: 'bold' }}> 초록색</span>은 적용됨, 
+                                            <span style={{ color: 'black', textDecoration: 'underline' }}> 밑줄</span>은 미적용입니다.
+                                        </div>
+                                    )}
+                                    
+                                    <div
                                         style={{
                                             flex: 1,
                                             padding: '16px',
@@ -905,11 +1056,14 @@ const VideoAnalysis = () => {
                                             borderRadius: '8px',
                                             fontSize: '14px',
                                             fontFamily: 'Inter, sans-serif',
-                                            resize: 'none',
-                                            outline: 'none',
-                                            lineHeight: '1.5'
+                                            lineHeight: '1.8',
+                                            backgroundColor: '#fafafa',
+                                            overflowY: 'auto',
+                                            userSelect: 'text'
                                         }}
-                                    />
+                                    >
+                                        {renderTranscriptWithHighlights()}
+                                    </div>
                                     
                                     {/* 저장 버튼 */}
                                     <button

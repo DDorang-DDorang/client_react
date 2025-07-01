@@ -181,34 +181,8 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
             </div>
           </>
         ) : (
-          // 로그인되지 않은 경우: 로그인, 회원가입 버튼
+          // 로그인되지 않은 경우: 회원가입, 로그인 버튼
           <>
-            <div 
-              style={{
-                padding: '10px 20px',
-                color: '#6c757d',
-                fontSize: '16px', 
-                fontFamily: 'Inter, sans-serif', 
-                fontWeight: '500', 
-                cursor: 'pointer',
-                borderRadius: '25px',
-                transition: 'all 0.3s ease',
-                background: 'transparent'
-              }}
-              onClick={() => handleNavigation('/login')}
-              onMouseEnter={(e) => {
-                e.target.style.background = '#f8f9fa';
-                e.target.style.color = '#000000';
-                e.target.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = 'transparent';
-                e.target.style.color = '#6c757d';
-                e.target.style.transform = 'translateY(0)';
-              }}
-            >
-              Login
-            </div>
             <div 
               style={{
                 padding: '10px 20px',
@@ -234,6 +208,32 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
               }}
             >
               Sign Up
+            </div>
+            <div 
+              style={{
+                padding: '10px 20px',
+                color: '#6c757d',
+                fontSize: '16px', 
+                fontFamily: 'Inter, sans-serif', 
+                fontWeight: '500', 
+                cursor: 'pointer',
+                borderRadius: '25px',
+                transition: 'all 0.3s ease',
+                background: 'transparent'
+              }}
+              onClick={() => handleNavigation('/login')}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#f8f9fa';
+                e.target.style.color = '#000000';
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'transparent';
+                e.target.style.color = '#6c757d';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              Login
             </div>
           </>
         )}
