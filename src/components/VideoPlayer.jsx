@@ -19,7 +19,7 @@ import {
     Fullscreen as FullscreenIcon
 } from '@mui/icons-material';
 
-const VideoPlayer = ({ presentation, open, onClose }) => {
+const VideoPlayer = ({ presentation, open, onClose, onTimeUpdate }) => {
     const videoRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -31,7 +31,13 @@ const VideoPlayer = ({ presentation, open, onClose }) => {
         if (open && videoRef.current) {
             const video = videoRef.current;
             
-            const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+            const handleTimeUpdate = () => {
+                const time = video.currentTime;
+                setCurrentTime(time);
+                if (onTimeUpdate) {
+                    onTimeUpdate(time);
+                }
+            };
             const handleDurationChange = () => setDuration(video.duration);
             const handlePlay = () => setIsPlaying(true);
             const handlePause = () => setIsPlaying(false);

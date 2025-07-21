@@ -101,6 +101,9 @@ const VideoAnalysis = () => {
     // AI 대본 수정 관련 상태
     const [aiEdits, setAiEdits] = useState([]);
     const [editedTranscript, setEditedTranscript] = useState('');
+    
+    // 비디오 재생 시간 상태
+    const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
     // 인증 검증 활성화 (토큰 만료 시 로그인으로 리다이렉트)
     useAuthValidation();
@@ -130,6 +133,20 @@ const VideoAnalysis = () => {
 
     const toggleSidebar = () => {
         setIsSidebarCollapsed(!isSidebarCollapsed);
+    };
+
+    // 비디오 시간 업데이트 핸들러
+    const handleVideoTimeUpdate = (time) => {
+        setCurrentVideoTime(time);
+    };
+
+    // 비디오 시간 이동 핸들러
+    const handleSeekToTime = (time) => {
+        const videoElement = document.querySelector('video');
+        if (videoElement) {
+            videoElement.currentTime = time;
+            setCurrentVideoTime(time);
+        }
     };
 
     useEffect(() => {
@@ -846,6 +863,7 @@ const VideoAnalysis = () => {
                                         borderRadius: '12px',
                                         objectFit: 'contain'
                                     }}
+                                    onTimeUpdate={(e) => handleVideoTimeUpdate(e.target.currentTime)}
                                 />
                             ) : (
                                 <div style={{
@@ -861,7 +879,11 @@ const VideoAnalysis = () => {
                     </div>
 
                     {/* 댓글 섹션 */}
-                    <CommentSection presentationId={presentationId} />
+                    <CommentSection 
+                        presentationId={presentationId} 
+                        currentTime={currentVideoTime}
+                        onSeekToTime={handleSeekToTime}
+                    />
 
                     {/* Overall Score Summary */}
                     <div style={{
