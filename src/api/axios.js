@@ -67,39 +67,50 @@ api.interceptors.response.use(
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
             
-            const refreshToken = localStorage.getItem('refreshToken');
-            if (refreshToken) {
-                try {
-                    console.log('401 error detected, attempting token refresh...');
-                    
-                    // 토큰 갱신 요청
-                    const refreshResponse = await axios.post(`${API_URL}/api/auth/token/refresh`, null, {
-                        headers: {
-                            'Authorization': `Bearer ${refreshToken}`
-                        }
-                    });
-                    
-                    if (refreshResponse.data && refreshResponse.data.access_token) {
-                        // 새로운 액세스 토큰 저장
-                        localStorage.setItem('token', refreshResponse.data.access_token);
-                        
-                        // 원래 요청에 새로운 토큰 적용하여 재시도
-                        originalRequest.headers.Authorization = `Bearer ${refreshResponse.data.access_token}`;
-                        return api(originalRequest);
-                    }
-                } catch (refreshError) {
-                    console.error('Token refresh failed:', refreshError);
-                    
-                    // 토큰 갱신 실패 시 모든 토큰 제거
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('refreshToken');
-                    
-                    // 로그인 페이지로 리다이렉트를 위한 이벤트 발생
-                    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            try {
+                console.log('401 error detected, attempting token refresh...');
+                
+                // 현재 JWT 토큰에서 이메일 추출
+                const currentToken = localStorage.getItem('token');
+                if (!currentToken) {
+                    throw new Error('No access token found');
                 }
-            } else {
-                // 리프레시 토큰이 없으면 로그아웃 처리
+                
+                const parts = currentToken.split('.');
+                if (parts.length !== 3) {
+                    throw new Error('Invalid JWT token format');
+                }
+                
+                const payload = JSON.parse(atob(parts[1]));
+                const email = payload.sub || payload.email;
+                
+                if (!email) {
+                    throw new Error('No email found in token');
+                }
+                
+                // 이메일로 토큰 갱신 요청
+                const refreshResponse = await axios.post(`${API_URL}/api/auth/token/refresh`, null, {
+                    params: { email },
+                    timeout: 10000
+                });
+                
+                if (refreshResponse.data && refreshResponse.data.accessToken) {
+                    // 새로운 액세스 토큰 저장
+                    localStorage.setItem('token', refreshResponse.data.accessToken);
+                    
+                    // 원래 요청에 새로운 토큰 적용하여 재시도
+                    originalRequest.headers.Authorization = `Bearer ${refreshResponse.data.accessToken}`;
+                    return api(originalRequest);
+                } else {
+                    throw new Error('No access token in response');
+                }
+            } catch (refreshError) {
+                console.error('Token refresh failed:', refreshError);
+                
+                // 토큰 갱신 실패 시 액세스 토큰 제거
                 localStorage.removeItem('token');
+                
+                // 로그인 페이지로 리다이렉트를 위한 이벤트 발생
                 window.dispatchEvent(new CustomEvent('auth:unauthorized'));
             }
         }

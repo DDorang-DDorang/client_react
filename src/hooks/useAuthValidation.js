@@ -458,8 +458,19 @@ const useAuthValidation = (skipRouteValidation = false) => {
             return true;
           }
         } catch (refreshError) {
-          console.log('Token refresh failed after server validation failure, logging out...');
-          performLogout();
+          console.log('Token refresh failed after server validation failure:', refreshError);
+          
+          // 토큰 갱신 실패 시 로그아웃
+          if (refreshError.message === 'Refresh token expired' || 
+              refreshError.response?.status === 401 || 
+              refreshError.response?.status === 403) {
+            console.log('Refresh token expired, logging out...');
+            performLogout();
+            return false;
+          }
+          
+          // 네트워크 오류 등 다른 오류는 재시도하지 않음
+          console.error('Token refresh error:', refreshError);
           return false;
         }
       }

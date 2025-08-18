@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { validateVideoFile } from '../utils/cameraUtils';
 import videoAnalysisService from '../api/videoAnalysisService';
 import axios from 'axios';
@@ -8,7 +8,8 @@ const VideoUploader = ({
   onClose, 
   presentationId = null, 
   enableAnalysis = false, 
-  onAnalysisComplete = null 
+  onAnalysisComplete = null,
+  initialVideoBlob = null // 대시보드에서 녹화된 비디오를 받기 위한 prop 추가
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -17,13 +18,33 @@ const VideoUploader = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [success, setSuccess] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [mediaStream, setMediaStream] = useState(null);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [videoBlob, setVideoBlob] = useState(null);
-  const [videoUrl, setVideoUrl] = useState(null);
+  const [videoBlob, setVideoBlob] = useState(initialVideoBlob); // 초기값으로 받은 비디오 설정
+  const [videoUrl, setVideoUrl] = useState(initialVideoBlob ? URL.createObjectURL(initialVideoBlob) : null);
+  
+  // 프레젠테이션 정보 상태 추가
+  const [presentationInfo, setPresentationInfo] = useState({
+    title: '',
+    script: '',
+    goalTime: ''
+  });
   
   const fileInputRef = useRef(null);
+
+  // 초기 비디오가 있으면 기본 제목 설정
+  useEffect(() => {
+    if (initialVideoBlob && !presentationInfo.title) {
+      setPresentationInfo(prev => ({
+        ...prev,
+        title: `녹화된 프레젠테이션_${new Date().toLocaleString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).replace(/[:\s]/g, '')}`
+      }));
+    }
+  }, [initialVideoBlob, presentationInfo.title]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -76,10 +97,26 @@ const VideoUploader = ({
     }
   };
 
+  const handlePresentationInfoChange = (field) => (event) => {
+    setPresentationInfo(prev => ({
+      ...prev,
+      [field]: event.target.value
+    }));
+  };
+
   const handleUpload = async () => {
     if (!selectedFile && !videoBlob) {
       setError('파일을 선택하거나 녹화를 완료해주세요.');
       return;
+    }
+
+    // 목표시간 유효성 검사
+    if (presentationInfo.goalTime) {
+      const goalTime = parseInt(presentationInfo.goalTime);
+      if (isNaN(goalTime) || goalTime < 1 || goalTime > 240) {
+        setError('목표시간은 1분 이상 240분 이하여야 합니다.');
+        return;
+      }
     }
     
     setIsUploading(true);
@@ -97,8 +134,17 @@ const VideoUploader = ({
         });
       }, 300);
 
-      // 파일 업로드
-      const uploadResult = await onFileUpload(selectedFile || videoBlob);
+      // 파일 업로드 시 프레젠테이션 정보도 함께 전달
+      const uploadData = {
+        file: selectedFile || videoBlob,
+        presentationInfo: {
+          title: presentationInfo.title || (selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, "") : '녹화된 프레젠테이션'),
+          script: presentationInfo.script || '',
+          goalTime: presentationInfo.goalTime ? parseInt(presentationInfo.goalTime) : null
+        }
+      };
+
+      const uploadResult = await onFileUpload(uploadData);
       
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -187,6 +233,11 @@ const VideoUploader = ({
       setSelectedFile(null);
       setVideoBlob(null);
       setVideoUrl(null);
+      setPresentationInfo({
+        title: '',
+        script: '',
+        goalTime: ''
+      });
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -220,57 +271,6 @@ const VideoUploader = ({
   const isProcessing = isUploading || isAnalyzing;
   const currentStatus = isAnalyzing ? '분석 중...' : isUploading ? '업로드 중...' : '';
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: {
-          width: 320,
-          height: 240,
-          frameRate: 15
-        }, 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-          channelCount: 2
-        }
-      });
-      setMediaStream(stream);
-      
-      // 지원되는 MIME 타입 확인
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
-        ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-          ? 'video/webm;codecs=vp8,opus'
-          : 'video/webm';
-      
-      console.log('Using MIME type:', mimeType);
-      
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: mimeType,
-        videoBitsPerSecond: 250000,
-        audioBitsPerSecond: 128000
-      });
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          const blob = new Blob([event.data], { type: mimeType });
-          setVideoBlob(blob);
-          const url = URL.createObjectURL(blob);
-          setVideoUrl(url);
-        }
-      };
-      
-      setMediaRecorder(mediaRecorder);
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
-      alert('카메라와 마이크 접근 권한이 필요합니다.');
-    }
-  };
-
   return (
     <div style={{
       position: 'fixed',
@@ -282,17 +282,18 @@ const VideoUploader = ({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000
+      zIndex: 1000
     }}>
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
-        padding: '32px',
-        minWidth: '500px',
+        borderRadius: '12px',
+        padding: '24px',
+        width: '90%',
         maxWidth: '600px',
-        boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.2)'
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
       }}>
-        {/* 헤더 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -302,10 +303,10 @@ const VideoUploader = ({
           <h2 style={{
             margin: 0,
             fontSize: '24px',
-            fontWeight: '700',
-            color: '#000000'
+            fontWeight: '600',
+            color: '#333333'
           }}>
-            {enableAnalysis ? '비디오 분석' : '비디오 파일 업로드'}
+            {enableAnalysis ? '비디오 업로드 및 분석' : '비디오 업로드'}
           </h2>
           <button
             onClick={onClose}
@@ -316,18 +317,122 @@ const VideoUploader = ({
               fontSize: '24px',
               cursor: isProcessing ? 'not-allowed' : 'pointer',
               color: '#666666',
-              opacity: isProcessing ? 0.5 : 1
+              padding: '4px'
             }}
           >
             ×
           </button>
         </div>
 
+        {/* 프레젠테이션 정보 입력 폼 */}
+        <div style={{
+          backgroundColor: '#f8f9fa',
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '20px'
+        }}>
+          <h3 style={{
+            margin: '0 0 16px 0',
+            fontSize: '18px',
+            fontWeight: '600',
+            color: '#333333'
+          }}>
+            프레젠테이션 정보
+          </h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '4px',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#555555'
+            }}>
+              제목 *
+            </label>
+            <input
+              type="text"
+              value={presentationInfo.title}
+              onChange={handlePresentationInfoChange('title')}
+              placeholder="프레젠테이션 제목을 입력하세요"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '4px',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#555555'
+            }}>
+              목표 시간 (분)
+            </label>
+            <input
+              type="number"
+              value={presentationInfo.goalTime}
+              onChange={handlePresentationInfoChange('goalTime')}
+              placeholder="예: 5 (5분)"
+              min="1"
+              max="240"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <small style={{
+              color: '#666666',
+              fontSize: '12px'
+            }}>
+              1분 ~ 240분 사이로 입력하세요
+            </small>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '4px',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#555555'
+            }}>
+              스크립트 (선택사항)
+            </label>
+            <textarea
+              value={presentationInfo.script}
+              onChange={handlePresentationInfoChange('script')}
+              placeholder="프레젠테이션에서 말할 내용을 입력하세요"
+              rows="3"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                boxSizing: 'border-box',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+        </div>
+
         {/* 에러 메시지 */}
         {error && (
           <div style={{
-            backgroundColor: '#fee',
-            color: '#c33',
+            backgroundColor: '#f8d7da',
+            color: '#721c24',
             padding: '12px',
             borderRadius: '8px',
             marginBottom: '16px',
@@ -340,8 +445,8 @@ const VideoUploader = ({
         {/* 성공 메시지 */}
         {success && (
           <div style={{
-            backgroundColor: '#efe',
-            color: '#2a5',
+            backgroundColor: '#d4edda',
+            color: '#155724',
             padding: '12px',
             borderRadius: '8px',
             marginBottom: '16px',
@@ -351,49 +456,67 @@ const VideoUploader = ({
           </div>
         )}
 
-        {/* 드래그 앤 드롭 영역 */}
-        <div
+        {/* 파일 업로드 영역 */}
+        <div style={{
+          border: '2px dashed #cccccc',
+          borderRadius: '8px',
+          padding: '32px',
+          textAlign: 'center',
+          backgroundColor: isDragOver ? '#f0f8ff' : '#ffffff',
+          transition: 'all 0.3s ease',
+          marginBottom: '20px'
+        }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => !isProcessing && fileInputRef.current?.click()}
-          style={{
-            border: `2px dashed ${isDragOver ? '#000000' : '#cccccc'}`,
-            borderRadius: '12px',
-            padding: '48px 24px',
-            textAlign: 'center',
-            cursor: isProcessing ? 'not-allowed' : 'pointer',
-            backgroundColor: isDragOver ? '#f8f9fa' : '#ffffff',
-            transition: 'all 0.2s ease',
-            marginBottom: '24px',
-            opacity: isProcessing ? 0.6 : 1
-          }}
         >
           <div style={{
             fontSize: '48px',
             marginBottom: '16px'
           }}>
-            {enableAnalysis ? '🎤' : '🎬'}
+            📁
           </div>
           
           <div style={{
             fontSize: '18px',
-            fontWeight: '600',
-            color: '#000000',
+            fontWeight: '500',
+            color: '#333333',
             marginBottom: '8px'
           }}>
-            파일을 여기에 드래그하거나 클릭하여 선택
+            비디오 파일을 드래그하거나 클릭하여 선택하세요
           </div>
           
           <div style={{
             fontSize: '14px',
             color: '#666666',
-            marginBottom: '16px'
+            marginBottom: '20px'
           }}>
-            {enableAnalysis 
-              ? 'MP4, AVI, MOV, WMV 파일 지원 (최대 100MB)' 
-              : 'MP4, WebM, OGG, AVI, MOV, WMV 파일 지원 (최대 500MB)'
-            }
+            지원 형식: MP4, AVI, MOV, WMV, WebM, OGG
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#007bff',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.6 : 1
+              }}
+            >
+              파일 선택
+            </button>
           </div>
 
           <input
@@ -440,62 +563,43 @@ const VideoUploader = ({
         )}
 
         {/* 선택된 파일 정보 */}
-        {selectedFile && (
+        {(selectedFile || videoBlob) && (
           <div style={{
             backgroundColor: '#f8f9fa',
-            borderRadius: '12px',
+            borderRadius: '8px',
             padding: '16px',
-            marginBottom: '24px'
+            marginBottom: '20px'
           }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '12px'
+              gap: '12px',
+              marginBottom: '12px'
             }}>
-              <div style={{
-                fontSize: '24px'
-              }}>
-                {getFileIcon(selectedFile.type)}
-              </div>
-              
-              <div style={{ flex: 1 }}>
+              <span style={{ fontSize: '24px' }}>
+                {getFileIcon(selectedFile?.type || 'video/webm')}
+              </span>
+              <div>
                 <div style={{
                   fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#000000',
-                  marginBottom: '4px'
+                  fontWeight: '500',
+                  color: '#333333'
                 }}>
-                  {selectedFile.name}
+                  {selectedFile?.name || (videoBlob ? `녹화된 비디오_${new Date().toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }).replace(/[:\s]/g, '')}.webm` : '녹화된 비디오')}
                 </div>
-                
                 <div style={{
                   fontSize: '14px',
                   color: '#666666'
                 }}>
-                  {formatFileSize(selectedFile.size)} • {selectedFile.type}
+                  {formatFileSize(selectedFile?.size || videoBlob?.size || 0)}
                 </div>
               </div>
-              
-              {!isProcessing && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedFile(null);
-                    setError(null);
-                    setSuccess('');
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '18px',
-                    cursor: 'pointer',
-                    color: '#666666',
-                    padding: '4px'
-                  }}
-                >
-                  ×
-                </button>
-              )}
             </div>
 
             {/* 비디오 미리보기 */}
@@ -503,7 +607,7 @@ const VideoUploader = ({
               marginTop: '12px'
             }}>
               <video
-                src={URL.createObjectURL(selectedFile)}
+                src={URL.createObjectURL(selectedFile || videoBlob)}
                 style={{
                   width: '100%',
                   maxHeight: '200px',
@@ -542,19 +646,23 @@ const VideoUploader = ({
           
           <button
             onClick={handleUpload}
-            disabled={!selectedFile || isProcessing}
+            disabled={!selectedFile && !videoBlob || isProcessing}
             style={{
               padding: '12px 24px',
-              backgroundColor: selectedFile && !isProcessing ? '#28a745' : '#cccccc',
+              backgroundColor: (selectedFile || videoBlob) && !isProcessing ? '#28a745' : '#cccccc',
               color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
               fontSize: '16px',
               fontWeight: '500',
-              cursor: selectedFile && !isProcessing ? 'pointer' : 'not-allowed'
+              cursor: (selectedFile || videoBlob) && !isProcessing ? 'pointer' : 'not-allowed'
             }}
           >
-            {isProcessing ? currentStatus : (enableAnalysis ? '분석 시작' : '업로드')}
+            {isProcessing ? currentStatus : (
+              enableAnalysis ? '분석 시작' : (
+                videoBlob ? '녹화 업로드' : '업로드'
+              )
+            )}
           </button>
         </div>
       </div>
@@ -562,9 +670,8 @@ const VideoUploader = ({
       <style>
         {`
           @keyframes loading {
-            0% { transform: translateX(-100%); }
-            50% { transform: translateX(0%); }
-            100% { transform: translateX(100%); }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
         `}
       </style>

@@ -28,6 +28,7 @@ const Dashboard = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const { error, setError, resetError } = useError(null);
+    const [success, setSuccess] = useState('');
     
     // 토픽 선택 관련 상태
     const [showTopicSelector, setShowTopicSelector] = useState(false);
@@ -36,6 +37,7 @@ const Dashboard = () => {
     const videoRef = useRef(null);
     const recorderRef = useRef(null);
     const timerRef = useRef(null);
+    const [refreshSidebarKey, setRefreshSidebarKey] = useState(0);
 
     // URL state에서 토픽 정보 가져오기
     useEffect(() => {
@@ -43,6 +45,17 @@ const Dashboard = () => {
             dispatch(setCurrentTopic(location.state.selectedTopic));
         }
     }, [location.state, dispatch]);
+
+    // 성공 메시지 자동 제거
+    useEffect(() => {
+        if (success) {
+            const timer = setTimeout(() => {
+                setSuccess('');
+            }, 5000); // 5초 후 자동 제거
+            
+            return () => clearTimeout(timer);
+        }
+    }, [success]);
 
     const handleNavigation = (path) => {
         navigate(path);
@@ -110,43 +123,33 @@ const Dashboard = () => {
         setCurrentStream(null);
         
         if (result) {
-            // 토픽이 선택되어 있는지 확인
+            // 녹화된 비디오를 VideoUploader로 전달하여 제목과 목표시간 설정 가능하도록 함
+            // blob을 파일 객체 형태로 변환하여 저장
+            const videoFile = {
+                id: Date.now(), // 고유 ID 생성
+                name: `녹화된 비디오_${new Date().toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).replace(/[:\s]/g, '')}.webm`,
+                type: 'recording',
+                blob: result.blob,
+                url: URL.createObjectURL(result.blob),
+                createdAt: new Date()
+            };
+            
+            setVideoFiles([videoFile]);
+            
+            // 토픽이 선택되지 않았으면 토픽 선택기 표시
             if (!currentTopic) {
-                setError('토픽을 선택해주세요.');
                 setShowTopicSelector(true);
-                return;
-            }
-
-            // 녹화 완료 처리 - 서버에 저장
-            try {
-                const presentationData = {
-                    title: `발표 녹화 ${new Date().toLocaleString()}`,
-                    type: 'recording',
-                    duration: recordingTime
-                };
-
-                const uploadResult = await topicService.createPresentation(
-                    currentTopic.id,
-                    presentationData,
-                    result.blob
-                );
-
-                if (uploadResult.success) {
-                    dispatch(addPresentation(uploadResult.data));
-                    
-                    // 분석 페이지로 이동
-                    navigate(`/video-analysis/${uploadResult.data.id}`, { 
-                        state: { 
-                            presentationData: uploadResult.data,
-                            topicData: currentTopic
-                        } 
-                    });
-                } else {
-                    setError(`프레젠테이션 저장 실패: ${uploadResult.error}`);
-                }
-            } catch (error) {
-                console.error('프레젠테이션 저장 실패:', error);
-                setError('프레젠테이션을 저장하는 중 오류가 발생했습니다.');
+                setSelectedTopicForUpload('recording'); // 녹화 요청 표시
+                setSuccess('녹화가 완료되었습니다! 토픽을 선택한 후 제목과 목표시간을 설정해주세요.');
+            } else {
+                setShowUploader(true);
+                setSuccess('녹화가 완료되었습니다! 제목과 목표시간을 설정해주세요.');
             }
         }
     };
@@ -163,20 +166,35 @@ const Dashboard = () => {
         setError(null);
     };
 
-    const handleFileUpload = async (file) => {
+    const handleFileUpload = async (uploadData) => {
         try {
             // 토픽이 선택되어 있는지 확인
             if (!currentTopic) {
                 setError('토픽을 선택해주세요.');
                 setShowTopicSelector(true);
-                setSelectedTopicForUpload(file);
+                setSelectedTopicForUpload(uploadData);
                 return;
             }
 
-            console.log('파일 업로드:', file);
+            console.log('파일 업로드:', uploadData);
+            
+            // uploadData가 객체인지 파일인지 확인
+            let file, presentationInfo;
+            
+            if (uploadData && typeof uploadData === 'object' && uploadData.file) {
+                // 새로운 형식: { file, presentationInfo }
+                file = uploadData.file;
+                presentationInfo = uploadData.presentationInfo || {};
+            } else {
+                // 기존 형식: 파일만 전달
+                file = uploadData;
+                presentationInfo = {};
+            }
             
             const presentationData = {
-                title: file.name.replace(/\.[^/.]+$/, ""), // 확장자 제거
+                title: presentationInfo.title || file.name.replace(/\.[^/.]+$/, ""), // 확장자 제거
+                script: presentationInfo.script || '',
+                goalTime: presentationInfo.goalTime || null,
                 type: 'upload',
                 originalFileName: file.name
             };
@@ -190,6 +208,7 @@ const Dashboard = () => {
             if (uploadResult.success) {
                 dispatch(addPresentation(uploadResult.data));
                 setShowUploader(false);
+                setRefreshSidebarKey(prev => prev + 1); // 사이드바 새로고침 트리거
                 
                 // 업로드 성공 시 presentationId 반환 (VideoUploader에서 분석 처리)
                 return uploadResult.data;
@@ -238,6 +257,7 @@ const Dashboard = () => {
             console.error('Dashboard: 네비게이션 오류:', error);
             setError('페이지 이동 중 오류가 발생했습니다. 다시 시도해주세요.');
         }
+        setRefreshSidebarKey(prev => prev + 1); // 분석 완료 후에도 새로고침
     };
 
     const handleTopicSelect = async (topicId) => {
@@ -247,11 +267,18 @@ const Dashboard = () => {
 
         // 선택한 토픽으로 대기 중인 파일 업로드 처리
         if (selectedTopicForUpload) {
-            try {
-                await handleFileUpload(selectedTopicForUpload);
+            if (selectedTopicForUpload === 'upload' || selectedTopicForUpload === 'recording') {
+                // 업로드 또는 녹화 요청인 경우 VideoUploader 열기
+                setShowUploader(true);
                 setSelectedTopicForUpload(null);
-            } catch (error) {
-                setError(error.message);
+            } else {
+                // 파일 업로드 데이터인 경우 처리
+                try {
+                    await handleFileUpload(selectedTopicForUpload);
+                    setSelectedTopicForUpload(null);
+                } catch (error) {
+                    setError(error.message);
+                }
             }
         }
     };
@@ -280,6 +307,7 @@ const Dashboard = () => {
             {/* Collapsible Sidebar */}
             <CollapsibleSidebar 
                 isCollapsed={isSidebarCollapsed}
+                refreshKey={refreshSidebarKey}
             />
 
             {/* 현재 선택된 토픽 표시 */}
@@ -360,6 +388,41 @@ const Dashboard = () => {
                             </span>
                         </div>
                     </>
+                ) : videoFiles.length > 0 ? (
+                    // 녹화된 비디오가 있으면 표시
+                    <div style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff'
+                    }}>
+                        <video
+                            src={videoFiles[0].url}
+                            controls
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                borderRadius: 20
+                            }}
+                        />
+                        <div style={{
+                            position: 'absolute',
+                            bottom: '20px',
+                            left: '20px',
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            color: '#ffffff',
+                            padding: '8px 16px',
+                            borderRadius: '20px',
+                            fontSize: '14px',
+                            fontWeight: '500'
+                        }}>
+                            📹 녹화된 비디오
+                        </div>
+                    </div>
                 ) : (
                     <div style={{
                         textAlign: 'center',
@@ -386,13 +449,33 @@ const Dashboard = () => {
                                 {error}
                             </div>
                         )}
+                        
+                        {success && (
+                            <div style={{
+                                marginTop: '16px',
+                                padding: '12px',
+                                backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                                borderRadius: '8px',
+                                color: '#4caf50',
+                                fontSize: '14px'
+                            }}>
+                                {success}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
 
             {/* Upload Button - enhanced with click handler */}
             <div 
-                onClick={() => setShowUploader(true)}
+                onClick={() => {
+                    if (!currentTopic) {
+                        setShowTopicSelector(true);
+                        setSelectedTopicForUpload('upload'); // 업로드 요청 표시
+                    } else {
+                        setShowUploader(true);
+                    }
+                }}
                 style={{
                     width: 91, 
                     height: 45, 
@@ -571,7 +654,12 @@ const Dashboard = () => {
                             fontSize: '14px',
                             color: '#666666'
                         }}>
-                            영상을 저장할 토픽을 선택하세요:
+                            {selectedTopicForUpload === 'upload' ? 
+                                '업로드할 영상을 저장할 토픽을 선택하세요:' :
+                                selectedTopicForUpload === 'recording' ?
+                                '녹화된 영상을 저장할 토픽을 선택하세요:' :
+                                '영상을 저장할 토픽을 선택하세요:'
+                            }
                         </div>
 
                         <div style={{
@@ -673,77 +761,18 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {/* Video Files List - 업로드된/녹화된 파일들 표시 */}
-            {videoFiles.length > 0 && (
-                <div style={{
-                    position: 'absolute',
-                    right: '20px',
-                    top: '100px',
-                    width: '300px',
-                    maxHeight: '400px',
-                    backgroundColor: '#ffffff',
-                    borderRadius: '12px',
-                    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
-                    padding: '16px',
-                    overflowY: 'auto'
-                }}>
-                    <h3 style={{
-                        margin: '0 0 16px 0',
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: '#000000'
-                    }}>
-                        비디오 파일 ({videoFiles.length})
-                    </h3>
-                    
-                    {videoFiles.map((file) => (
-                        <div key={file.id} style={{
-                            backgroundColor: '#f8f9fa',
-                            borderRadius: '8px',
-                            padding: '12px',
-                            marginBottom: '8px',
-                            border: '1px solid #e9ecef'
-                        }}>
-                            <div style={{
-                                fontSize: '14px',
-                                fontWeight: '500',
-                                color: '#000000',
-                                marginBottom: '4px'
-                            }}>
-                                {file.name}
-                            </div>
-                            
-                            <div style={{
-                                fontSize: '12px',
-                                color: '#666666',
-                                marginBottom: '8px'
-                            }}>
-                                {file.type === 'recording' ? '📹 녹화' : '📁 업로드'} • {file.createdAt.toLocaleTimeString()}
-                            </div>
-                            
-                            <video 
-                                controls 
-                                src={file.url}
-                                style={{
-                                    width: '100%',
-                                    height: '120px',
-                                    borderRadius: '4px',
-                                    backgroundColor: '#000000'
-                                }}
-                            />
-                        </div>
-                    ))}
-                </div>
-            )}
-
             {/* Video Uploader Modal */}
             {showUploader && (
                 <VideoUploader
                     onFileUpload={handleFileUpload}
-                    onClose={() => setShowUploader(false)}
+                    onClose={() => {
+                        setShowUploader(false);
+                        // VideoUploader가 닫혀도 녹화된 비디오는 유지
+                    }}
                     enableAnalysis={true}
                     presentationId={null}
                     onAnalysisComplete={handleAnalysisComplete}
+                    initialVideoBlob={videoFiles.length > 0 ? videoFiles[0].blob : null}
                 />
             )}
             

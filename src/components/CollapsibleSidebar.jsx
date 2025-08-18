@@ -10,7 +10,7 @@ import VideoPlayer from './VideoPlayer';
 import HexagonChart from './HexagonChart';
 import { setTopics, setPresentations, setCurrentTopic, setLoading, setError, updateTopic, deleteTopic, updatePresentation, deletePresentation } from '../store/slices/topicSlice';
 
-const CollapsibleSidebar = ({ isCollapsed }) => {
+const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     const navigate = useNavigate();
     const user = useSelector(state => state.auth.user);
     const topics = useSelector(state => state.topic.topics);
@@ -39,6 +39,12 @@ const CollapsibleSidebar = ({ isCollapsed }) => {
             loadTopics();
         }
     }, [user]);
+
+    useEffect(() => {
+        if (currentTopic) {
+            loadPresentations(currentTopic.id);
+        }
+    }, [refreshKey]);
 
     const loadTopics = async () => {
         if (!user || !(user.userId || user.id || user.email)) {
@@ -602,11 +608,12 @@ const CollapsibleSidebar = ({ isCollapsed }) => {
 
                                                     {/* 미니 육각형 차트 또는 분석 대기 상태 */}
                                                     <div style={{
-                                                        width: '100px',
-                                                        height: '100px',
+                                                        width: '180px',
+                                                        height: '180px',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        justifyContent: 'center'
+                                                        justifyContent: 'center',
+                                                        margin: '0 auto'
                                                     }}>
                                                         {hasAnalysis ? (
                                                             <HexagonChart
@@ -614,7 +621,7 @@ const CollapsibleSidebar = ({ isCollapsed }) => {
                                                                 size={180}
                                                                 showLabels={false}
                                                                 showGrid={false}
-                                                                isPreview={false}
+                                                                isPreview={true}
                                                             />
                                                         ) : (
                                                             <div style={{

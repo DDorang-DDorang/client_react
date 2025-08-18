@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const HexagonChart = ({ data = {}, transcriptData, analysisDetails, size = 350, showLabels = true, showGrid = true, isPreview = false }) => {
+const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = true, showGrid = true, isPreview = false }) => {
     const canvasRef = useRef(null);
-    const [activeView, setActiveView] = useState('chart'); // 'chart' 또는 'transcript'
     
     const labels = {
         voice: '음성',
@@ -101,460 +100,385 @@ const HexagonChart = ({ data = {}, transcriptData, analysisDetails, size = 350, 
             };
         };
 
-        // Draw grid lines (concentric hexagons) - only if showGrid is true
+        // Draw grid
         if (showGrid) {
             ctx.strokeStyle = colors.grid;
             ctx.lineWidth = 1;
             
-            for (let level = 0.2; level <= 1; level += 0.2) {
+            // Draw hexagon grid lines
+            for (let i = 0; i < sides; i++) {
+                const point1 = getHexPoint(i, 0.2);
+                const point2 = getHexPoint(i, 0.4);
+                const point3 = getHexPoint(i, 0.6);
+                const point4 = getHexPoint(i, 0.8);
+                const point5 = getHexPoint(i, 1.0);
+                
                 ctx.beginPath();
-                for (let i = 0; i <= sides; i++) {
-                    const point = getHexPoint(i, level);
-                    if (i === 0) {
-                        ctx.moveTo(point.x, point.y);
-                    } else {
-                        ctx.lineTo(point.x, point.y);
-                    }
-                }
+                ctx.moveTo(point1.x, point1.y);
+                ctx.lineTo(point2.x, point2.y);
+                ctx.lineTo(point3.x, point3.y);
+                ctx.lineTo(point4.x, point4.y);
+                ctx.lineTo(point5.x, point5.y);
                 ctx.stroke();
             }
 
-            // Draw axis lines
-            ctx.strokeStyle = colors.grid;
-            ctx.lineWidth = 1;
+            // Draw connecting lines
             for (let i = 0; i < sides; i++) {
-                const point = getHexPoint(i);
+                const point1 = getHexPoint(i, 0.2);
+                const point2 = getHexPoint((i + 1) % sides, 0.2);
                 ctx.beginPath();
-                ctx.moveTo(centerX, centerY);
-                ctx.lineTo(point.x, point.y);
+                ctx.moveTo(point1.x, point1.y);
+                ctx.lineTo(point2.x, point2.y);
+                ctx.stroke();
+                
+                const point3 = getHexPoint(i, 0.4);
+                const point4 = getHexPoint((i + 1) % sides, 0.4);
+                ctx.beginPath();
+                ctx.moveTo(point3.x, point3.y);
+                ctx.lineTo(point4.x, point4.y);
+                ctx.stroke();
+                
+                const point5 = getHexPoint(i, 0.6);
+                const point6 = getHexPoint((i + 1) % sides, 0.6);
+                ctx.beginPath();
+                ctx.moveTo(point5.x, point5.y);
+                ctx.lineTo(point6.x, point6.y);
+                ctx.stroke();
+                
+                const point7 = getHexPoint(i, 0.8);
+                const point8 = getHexPoint((i + 1) % sides, 0.8);
+                ctx.beginPath();
+                ctx.moveTo(point7.x, point7.y);
+                ctx.lineTo(point8.x, point8.y);
+                ctx.stroke();
+                
+                const point9 = getHexPoint(i, 1.0);
+                const point10 = getHexPoint((i + 1) % sides, 1.0);
+                ctx.beginPath();
+                ctx.moveTo(point9.x, point9.y);
+                ctx.lineTo(point10.x, point10.y);
                 ctx.stroke();
             }
         }
 
         // Draw data polygon
-        const dataKeys = Object.keys(safeData);
-        ctx.strokeStyle = colors.data;
-        ctx.fillStyle = colors.dataFill;
-        ctx.lineWidth = 2;
+        const dataPoints = [];
+        const axisOrder = ['voice', 'speed', 'anxiety', 'eyeContact', 'pitch', 'clarity'];
         
-        ctx.beginPath();
-        dataKeys.forEach((key, index) => {
-            const value = (safeData[key] / 100) * animationProgress; // 애니메이션 적용
-            const point = getHexPoint(index, value);
-            if (index === 0) {
-                ctx.moveTo(point.x, point.y);
+        axisOrder.forEach((key, index) => {
+            const value = safeData[key];
+            let normalizedValue;
+            
+            if (typeof value === 'string') {
+                // 등급 기반 값 (A=1.0, B=0.8, C=0.6, D=0.4, E=0.2, F=0.0)
+                const gradeValues = { 'A': 1.0, 'B': 0.8, 'C': 0.6, 'D': 0.4, 'E': 0.2, 'F': 0.0 };
+                normalizedValue = gradeValues[value] || 0.6;
             } else {
-                ctx.lineTo(point.x, point.y);
+                // 숫자 기반 값 (0-100을 0-1로 정규화)
+                normalizedValue = (value || 0) / 100;
             }
+            
+            const point = getHexPoint(index, normalizedValue * animationProgress);
+            dataPoints.push(point);
+        });
+
+        // Fill data polygon
+        if (dataPoints.length > 0) {
+            ctx.fillStyle = colors.dataFill;
+            ctx.beginPath();
+            ctx.moveTo(dataPoints[0].x, dataPoints[0].y);
+            dataPoints.forEach(point => {
+                ctx.lineTo(point.x, point.y);
         });
         ctx.closePath();
         ctx.fill();
+        }
+
+        // Draw data polygon border
+        if (dataPoints.length > 0) {
+            ctx.strokeStyle = colors.data;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(dataPoints[0].x, dataPoints[0].y);
+            dataPoints.forEach(point => {
+                ctx.lineTo(point.x, point.y);
+            });
+            ctx.closePath();
         ctx.stroke();
+        }
 
         // Draw data points
+        dataPoints.forEach((point, index) => {
         ctx.fillStyle = colors.data;
-        dataKeys.forEach((key, index) => {
-            const value = (safeData[key] / 100) * animationProgress; // 애니메이션 적용
-            const point = getHexPoint(index, value);
             ctx.beginPath();
             ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
             ctx.fill();
+            
+            // Draw labels (미리보기 모드에서는 개별 라벨 숨김)
+            if (showLabels && !isPreview) {
+                ctx.fillStyle = colors.text;
+                ctx.font = '12px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                
+                const key = axisOrder[index];
+                const label = labels[key];
+                const grade = safeData[key];
+                
+                // 차트 외각에 라벨 배치 (각 축의 끝점에서 약간 바깥쪽)
+                const outerRadius = radius * 1.2; // 차트보다 20% 더 바깥쪽
+                const outerPoint = getHexPoint(index, outerRadius / radius);
+                
+                // 일반 모드에서는 능력치 이름과 등급을 함께 표시
+                ctx.fillText(`${label}`, outerPoint.x, outerPoint.y - 8);
+                if (typeof grade === 'string') {
+                    ctx.fillText(`${grade}등급`, outerPoint.x, outerPoint.y + 8);
+                } else {
+                    ctx.fillText(`${grade}점`, outerPoint.x, outerPoint.y + 8);
+                }
+            }
         });
 
-        // Draw labels and scores - only if showLabels is true
-        if (showLabels) {
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            dataKeys.forEach((key, index) => {
-                const point = getHexPoint(index, 1.2);
-                const label = labels[key] || key;
-                const score = Math.round(safeData[key] * animationProgress); // 애니메이션된 점수
-                
-                // Draw label
-                ctx.fillStyle = colors.text;
-                ctx.font = 'bold 12px Inter, sans-serif';
-                ctx.fillText(label, point.x, point.y - 8);
-                
-                // Draw score with color
-                ctx.font = '10px Inter, sans-serif';
-                ctx.fillStyle = getScoreColor(safeData[key]);
-                ctx.fillText(`${score}점`, point.x, point.y + 8);
-            });
-        }
-
-        // Draw center score (animated) - always show for preview, or when showLabels is true
+        // Draw center average score (미리보기 모드에서도 표시)
         if (showLabels || isPreview) {
-            const averageScore = Math.round((Object.values(safeData).reduce((a, b) => a + b, 0) / dataKeys.length) * animationProgress);
             ctx.fillStyle = colors.text;
-            ctx.font = isPreview ? 'bold 110px Inter, sans-serif' : 'bold 18px Inter, sans-serif';
+            ctx.font = isPreview ? '16px Inter, sans-serif' : '20px Inter, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(`${averageScore}`, centerX, centerY + (isPreview ? 10 : -5));
+            ctx.fontWeight = 'bold';
             
-            if (!isPreview) {
-                ctx.font = '12px Inter, sans-serif';
-                ctx.fillText('평균', centerX, centerY + 10);
-            }
-        } else if (!showLabels && !isPreview && size <= 180) {
-            // 사이드바용 미니 차트에서만 중앙 점수 표시
-            const averageScore = Math.round((Object.values(safeData).reduce((a, b) => a + b, 0) / dataKeys.length) * animationProgress);
-            ctx.fillStyle = colors.text;
-            ctx.font = 'bold 32px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${averageScore}`, centerX, centerY);
-        } else if (!showLabels && !isPreview && size <= 250) {
-            // 사이드바용 미니 차트 - 중앙에 작은 점수만 표시
-            const averageScore = Math.round((Object.values(safeData).reduce((a, b) => a + b, 0) / dataKeys.length) * animationProgress);
-            ctx.fillStyle = colors.text;
-            ctx.font = 'bold 12px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${averageScore}`, centerX, centerY);
+            // 평균 등급 계산
+            let totalGrade = 0;
+            let gradeCount = 0;
+            axisOrder.forEach(key => {
+                const value = safeData[key];
+                if (typeof value === 'string') {
+                    const gradeValues = { 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'E': 50, 'F': 40 };
+                    totalGrade += gradeValues[value] || 70;
+                    gradeCount++;
+                }
+            });
+            
+            const averageGrade = gradeCount > 0 ? Math.round(totalGrade / gradeCount) : 70;
+            let averageGradeText;
+            
+            if (averageGrade >= 90) averageGradeText = 'A';
+            else if (averageGrade >= 80) averageGradeText = 'B';
+            else if (averageGrade >= 70) averageGradeText = 'C';
+            else if (averageGrade >= 60) averageGradeText = 'D';
+            else if (averageGrade >= 50) averageGradeText = 'E';
+            else averageGradeText = 'F';
+            
+            ctx.fillText(`${averageGradeText}`, centerX, centerY + (isPreview ? 10 : -5));
         }
 
-    }, [safeData, activeView, animationProgress, size, showLabels, showGrid]);
+    }, [safeData, animationProgress, size, showLabels, showGrid, isPreview]);
 
-    const labelStyle = {
-        position: 'absolute',
-        transform: 'translate(-50%, -50%)',
-        fontSize: '0.8rem',
-        fontWeight: 'bold',
-        color: '#333',
-        textAlign: 'center',
-        width: '80px',
-        pointerEvents: 'none'
+    // 카테고리별 아이콘
+    const categoryIcons = {
+        voice: '🎤',
+        speed: '⚡',
+        anxiety: '😰',
+        eyeContact: '👁️',
+        pitch: '🎵',
+        clarity: '💬'
     };
-
-    const scoreStyle = {
-        position: 'absolute',
-        transform: 'translate(-50%, -50%)',
-        fontSize: '0.7rem',
-        color: '#666',
-        textAlign: 'center',
-        width: '80px',
-        pointerEvents: 'none'
-    };
-
-    // 미리보기 모드일 때는 간단한 차트만 반환
-    if (isPreview || (!showLabels && size <= 180)) {
-        return (
-            <div style={{
-                width: size,
-                height: size,
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-            }}>
-                <canvas
-                    ref={canvasRef}
-                    width={size}
-                    height={size}
-                    style={{
-                        maxWidth: '100%',
-                        height: 'auto'
-                    }}
-                />
-            </div>
-        );
-    }
 
     return (
         <div style={{
             width: '100%',
-            backgroundColor: colors.background,
-            borderRadius: '12px',
-            border: '1px solid #e9ecef',
-            overflow: 'hidden'
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
         }}>
-            {/* Tab Navigation */}
+            {/* Header - 미리보기 모드에서는 숨김 */}
             {!isPreview && (
                 <div style={{
-                    display: 'flex',
-                    borderBottom: '1px solid #e9ecef',
-                    backgroundColor: '#ffffff',
-                    borderRadius: '12px 12px 0 0'
+                    padding: '20px 20px 0 20px'
                 }}>
-                <button
-                    onClick={() => setActiveView('chart')}
-                    style={{
-                        flex: 1,
-                        padding: '16px 20px',
-                        backgroundColor: activeView === 'chart' ? '#f8f9fa' : 'transparent',
-                        border: 'none',
-                        borderBottom: activeView === 'chart' ? '3px solid #2C2C2C' : '3px solid transparent',
-                        fontSize: '15px',
-                        fontWeight: activeView === 'chart' ? '700' : '500',
-                        color: activeView === 'chart' ? '#2C2C2C' : '#666666',
-                        cursor: 'pointer',
+                    <h3 style={{
+                        fontSize: '18px',
+                        fontWeight: '700',
+                        color: '#000000',
+                        margin: '0 0 20px 0',
                         fontFamily: 'Inter, sans-serif',
-                        transition: 'all 0.3s ease',
-                        borderRadius: activeView === 'chart' ? '12px 0 0 0' : '0'
-                    }}
-                    onMouseEnter={(e) => {
-                        if (activeView !== 'chart') {
-                            e.target.style.color = '#2C2C2C';
-                            e.target.style.backgroundColor = '#f8f9fa';
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        if (activeView !== 'chart') {
-                            e.target.style.color = '#666666';
-                            e.target.style.backgroundColor = 'transparent';
-                        }
-                    }}
-                >
-                    📊 능력치 분석
-                </button>
-                <button
-                    onClick={() => setActiveView('transcript')}
-                    style={{
-                        flex: 1,
-                        padding: '16px 20px',
-                        backgroundColor: activeView === 'transcript' ? '#f8f9fa' : 'transparent',
-                        border: 'none',
-                        borderBottom: activeView === 'transcript' ? '3px solid #2C2C2C' : '3px solid transparent',
-                        fontSize: '15px',
-                        fontWeight: activeView === 'transcript' ? '700' : '500',
-                        color: activeView === 'transcript' ? '#2C2C2C' : '#666666',
-                        cursor: 'pointer',
-                        fontFamily: 'Inter, sans-serif',
-                        transition: 'all 0.3s ease',
-                        borderRadius: activeView === 'transcript' ? '0 12px 0 0' : '0'
-                    }}
-                    onMouseEnter={(e) => {
-                        if (activeView !== 'transcript') {
-                            e.target.style.color = '#2C2C2C';
-                            e.target.style.backgroundColor = '#f8f9fa';
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        if (activeView !== 'transcript') {
-                            e.target.style.color = '#666666';
-                            e.target.style.backgroundColor = 'transparent';
-                        }
-                    }}
-                >
-                    📝 발표 대본
-                </button>
+                        textAlign: 'center'
+                    }}>
+                        📊 능력치 분석
+                    </h3>
                 </div>
             )}
 
-            {/* Content Area */}
+                        {/* Content Area */}
             <div style={{
-                padding: '20px',
-                height: 'calc(100vh - 200px)', // 전체 높이에서 네비게이션과 패딩을 뺀 높이
-                overflowY: 'auto'
+                padding: isPreview ? '10px' : '20px',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column'
             }}>
-                {activeView === 'chart' ? (
-                    // Hexagon Chart and Analysis View
-                    <div style={{
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
-                        {/* Hexagon Chart */}
+                                        {/* Hexagon Chart - 고정 */}
                         <div style={{
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
-                            height: '220px',
-                            marginBottom: '20px',
+                            height: isPreview ? '180px' : '220px',
+                            marginBottom: isPreview ? '10px' : '20px',
                             flexShrink: 0
                         }}>
-                            <canvas
-                                ref={canvasRef}
-                                width={size}
-                                height={size * 0.85}
-                                style={{
-                                    maxWidth: '100%',
-                                    height: 'auto'
-                                }}
-                            />
-                        </div>
+                    <canvas
+                        ref={canvasRef}
+                        width={size}
+                        height={size * 0.85}
+                        style={{
+                            width: isPreview ? `${size}px` : '100%',
+                            height: isPreview ? `${size * 0.85}px` : 'auto',
+                            maxWidth: '100%'
+                        }}
+                    />
+                </div>
 
-                        {/* Detailed Analysis */}
-                        {analysisDetails && (
-                            <>
-                                <h4 style={{
-                                    fontSize: '16px',
-                                    fontWeight: '600',
-                                    color: '#000000',
-                                    margin: '0 0 16px 0',
-                                    fontFamily: 'Inter, sans-serif'
-                                }}>
-                                    📈 세부 분석
-                                </h4>
+                {/* Detailed Analysis - 스크롤 가능 (미리보기 모드에서는 숨김) */}
+                {analysisDetails && !isPreview && (
+                    <div style={{
+                        flex: 1,
+                        overflowY: 'auto',
+                        paddingRight: '8px',
+                        marginTop: '20px'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '20px'
+                        }}>
+                            {Object.entries(analysisDetails).map(([key, item], index, array) => {
+                                // 등급을 ABCDE로 변환하는 함수
+                                const convertGradeToABCDE = (grade) => {
+                                    if (!grade) return 'C';
+                                    if (typeof grade === 'string') {
+                                        // 이미 ABCDE인 경우 그대로 사용
+                                        if (['A', 'B', 'C', 'D', 'E'].includes(grade)) return grade;
+                                        // N/A나 개발중인 경우 C로 설정
+                                        if (grade.includes('N/A') || grade.includes('개발중')) return 'C';
+                                        // 숫자 점수인 경우 ABCDE로 변환
+                                        if (typeof grade === 'number' || !isNaN(grade)) {
+                                            const numGrade = parseFloat(grade);
+                                            if (numGrade >= 0.8) return 'A';
+                                            if (numGrade >= 0.6) return 'B';
+                                            if (numGrade >= 0.4) return 'C';
+                                            if (numGrade >= 0.2) return 'D';
+                                            return 'E';
+                                        }
+                                    }
+                                    return 'C';
+                                };
+
+                                const analysisItem = {
+                                    title: key,
+                                    score: item.score || 0,
+                                    grade: convertGradeToABCDE(item.grade),
+                                    description: item.text || '분석 결과가 없습니다.',
+                                    suggestions: item.suggestions || []
+                                };
                                 
-                                <div style={{
-                                    flex: 1,
-                                    overflowY: 'auto'
-                                }}>
-                                    {Object.entries(analysisDetails).map(([key, item], index) => {
-                                        const categoryIcons = {
-                                            'voice': '🎤',
-                                            'speed': '⚡',
-                                            'pitch': '🎵',
-                                            'clarity': '🗣️',
-                                            'anxiety': '😰',
-                                            'eyeContact': '👀'
-                                        };
+                                return (
+                                    <div key={key} style={{
+                                        padding: '0',
+                                        borderBottom: index === array.length - 1 ? 'none' : '1px solid #f0f0f0',
+                                        paddingBottom: '20px'
+                                    }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '12px'
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}>
+                                                <span style={{ fontSize: '18px' }}>
+                                                    {categoryIcons[key] || '📊'}
+                                                </span>
+                                                <h5 style={{
+                                                    fontSize: '16px',
+                                                    fontWeight: '600',
+                                                    color: '#000000',
+                                                    margin: 0,
+                                                    fontFamily: 'Inter, sans-serif',
+                                                    textTransform: 'capitalize'
+                                                }}>
+                                                    {analysisItem.title}
+                                                </h5>
+                                            </div>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}>
+                                                <span style={{
+                                                    fontSize: '16px',
+                                                    fontWeight: '700',
+                                                    color: getScoreColor(analysisItem.score),
+                                                    padding: '4px 12px',
+                                                    backgroundColor: getScoreColor(analysisItem.score) + '15',
+                                                    borderRadius: '20px'
+                                                }}>
+                                                    {analysisItem.grade}등급
+                                                </span>
+                                            </div>
+                                        </div>
                                         
-                                        // 객체를 배열 형식으로 변환
-                                        const analysisItem = {
-                                            title: item.grade ? `${key} (${item.grade})` : key,
-                                            score: item.score || 0,
-                                            description: item.text || '분석 결과가 없습니다.',
-                                            suggestions: item.suggestions || []
-                                        };
+                                        <p style={{
+                                            fontSize: '14px',
+                                            color: '#555555',
+                                            margin: '0 0 12px 0',
+                                            lineHeight: '1.6'
+                                        }}>
+                                            {analysisItem.description}
+                                        </p>
                                         
-                                        return (
-                                            <div key={index} style={{
-                                                backgroundColor: '#ffffff',
-                                                borderRadius: '12px',
-                                                padding: '18px',
-                                                marginBottom: '14px',
-                                                border: '1px solid #e9ecef',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
-                                                transition: 'all 0.2s ease',
-                                                cursor: 'default'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.transform = 'translateY(-1px)';
-                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.transform = 'translateY(0)';
-                                                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.04)';
-                                            }}
-                                            >
+                                        {analysisItem.suggestions.length > 0 && (
+                                            <div style={{
+                                                backgroundColor: '#f8f9fa',
+                                                borderRadius: '8px',
+                                                padding: '12px',
+                                                fontSize: '13px',
+                                                color: '#555555'
+                                            }}>
                                                 <div style={{
                                                     display: 'flex',
-                                                    justifyContent: 'space-between',
                                                     alignItems: 'center',
-                                                    marginBottom: '10px'
+                                                    gap: '6px',
+                                                    marginBottom: '8px'
                                                 }}>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <span style={{ fontSize: '16px' }}>
-                                                            {categoryIcons[key] || '📊'}
-                                                        </span>
-                                                        <h5 style={{
-                                                            fontSize: '15px',
-                                                            fontWeight: '600',
-                                                            color: '#000000',
-                                                            margin: 0,
-                                                            fontFamily: 'Inter, sans-serif'
-                                                        }}>
-                                                            {analysisItem.title}
-                                                        </h5>
-                                                    </div>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px'
-                                                    }}>
-                                                        <div style={{
-                                                            width: '6px',
-                                                            height: '6px',
-                                                            borderRadius: '50%',
-                                                            backgroundColor: getScoreColor(analysisItem.score)
-                                                        }}></div>
-                                                        <span style={{
-                                                            fontSize: '15px',
-                                                            fontWeight: '700',
-                                                            color: getScoreColor(analysisItem.score)
-                                                        }}>
-                                                            {analysisItem.score}점
-                                                        </span>
-                                                    </div>
+                                                    <span>💡</span>
+                                                    <strong>개선 제안:</strong>
                                                 </div>
-                                                
-                                                <p style={{
-                                                    fontSize: '13px',
-                                                    color: '#666666',
-                                                    margin: '0 0 14px 0',
-                                                    lineHeight: '1.5'
+                                                <ul style={{
+                                                    margin: '0',
+                                                    paddingLeft: '18px',
+                                                    listStyle: 'none'
                                                 }}>
-                                                    {analysisItem.description}
-                                                </p>
-                                                
-                                                {analysisItem.suggestions.length > 0 && (
-                                                    <div style={{
-                                                        backgroundColor: '#f8f9fa',
-                                                        borderRadius: '8px',
-                                                        padding: '12px',
-                                                        fontSize: '12px',
-                                                        color: '#555555'
-                                                    }}>
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px',
-                                                            marginBottom: '8px'
+                                                    {analysisItem.suggestions.map((suggestion, idx) => (
+                                                        <li key={idx} style={{ 
+                                                            marginBottom: '4px',
+                                                            position: 'relative'
                                                         }}>
-                                                            <span>💡</span>
-                                                            <strong>개선 제안:</strong>
-                                                        </div>
-                                                        <ul style={{
-                                                            margin: '0',
-                                                            paddingLeft: '18px',
-                                                            listStyle: 'none'
-                                                        }}>
-                                                            {analysisItem.suggestions.map((suggestion, idx) => (
-                                                                <li key={idx} style={{ 
-                                                                    marginBottom: '3px',
-                                                                    position: 'relative'
-                                                                }}>
-                                                                    <span style={{
-                                                                        position: 'absolute',
-                                                                        left: '-14px',
-                                                                        color: '#4CAF50',
-                                                                        fontWeight: 'bold'
-                                                                    }}>•</span>
-                                                                    {suggestion}
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                )}
+                                                            <span style={{
+                                                                position: 'absolute',
+                                                                left: '-14px',
+                                                                color: '#4CAF50',
+                                                                fontWeight: 'bold'
+                                                            }}>•</span>
+                                                            {suggestion}
+                                                        </li>
+                                                    ))}
+                                                </ul>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                ) : (
-                    // Transcript View
-                    <div style={{
-                        backgroundColor: '#ffffff',
-                        padding: '20px',
-                        maxHeight: '800px',
-                        overflowY: 'auto',
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: 'Inter, sans-serif',
-                        lineHeight: '1.8',
-                        fontSize: '30px',
-                        color: '#333333'
-                    }}>
-                        {transcriptData ? (
-                            <div>
-                                {transcriptData}
-                            </div>
-                        ) : (
-                            <div style={{ 
-                                textAlign: 'center', 
-                                color: '#666666',
-                                padding: '40px 20px',
-                                fontSize: '30px'
-                            }}>
-                                음성 인식 결과가 없습니다.
-                                <br />
-                                음성이 포함된 영상을 업로드하면 STT 분석 결과를 확인할 수 있습니다.
-                            </div>
-                        )}
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </div>

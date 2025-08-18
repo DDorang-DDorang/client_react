@@ -73,6 +73,29 @@ const videoAnalysisService = {
         }
     },
 
+    // 피드백 결과 조회
+    getPresentationFeedback: async (presentationId) => {
+        try {
+            const response = await api.get(`/api/video-analysis/feedback/${presentationId}`);
+            return {
+                success: true,
+                data: response.data
+            };
+        } catch (error) {
+            if (error.response?.status === 404) {
+                return {
+                    success: true,
+                    data: null
+                };
+            }
+            console.error('피드백 결과 조회 실패:', error);
+            return {
+                success: false,
+                error: error.response?.data?.message || '피드백 결과를 불러올 수 없습니다.'
+            };
+        }
+    },
+
     // 모든 분석 결과 조회
     getAllAnalysisResults: async (presentationId) => {
         try {
@@ -82,6 +105,12 @@ const videoAnalysisService = {
                 data: response.data
             };
         } catch (error) {
+            if (error.response?.status === 404) {
+                return {
+                    success: true,
+                    data: null
+                };
+            }
             console.error('분석 결과 조회 실패:', error);
             return {
                 success: false,
@@ -102,7 +131,7 @@ const videoAnalysisService = {
             console.error('분석 결과 존재 여부 확인 실패:', error);
             return {
                 success: false,
-                error: error.response?.data?.message || '분석 결과 확인에 실패했습니다.'
+                error: error.response?.data?.message || '분석 결과 존재 여부를 확인할 수 없습니다.'
             };
         }
     }
