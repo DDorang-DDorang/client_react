@@ -20,12 +20,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  InputAdornment,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Slider
+  InputAdornment
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -35,8 +30,7 @@ import {
   Search as SearchIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Close as CloseIcon,
-  AccessTime as AccessTimeIcon
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { 
   fetchComments, 
@@ -56,8 +50,6 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
   const [editText, setEditText] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [expandedReplies, setExpandedReplies] = useState(new Set());
-  const [seekTime, setSeekTime] = useState(currentTime); // 시간 이동 모달에서 사용할 상태
-  const [isSeekTimeDialogOpen, setIsSeekTimeDialogOpen] = useState(false); // 시간 이동 모달 상태
 
   // Redux store에서 상태 가져오기
   const { comments, commentCount, loading, error, sortBy, searchLoading, searchError } = useSelector(state => state.comment);
@@ -190,41 +182,6 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
     setNewComment(`[${minutes}:${seconds.toString().padStart(2, '0')}] `);
   };
 
-  // 시간 선택 모달 열기
-  const handleOpenSeekTimeDialog = (initialTime = 0) => {
-    setSeekTime(initialTime);
-    setIsSeekTimeDialogOpen(true);
-  };
-
-  // 시간 선택 모달 닫기
-  const handleCloseSeekTimeDialog = () => {
-    setIsSeekTimeDialogOpen(false);
-  };
-
-  // 선택한 시간으로 이동
-  const handleSeekToSelectedTime = () => {
-    if (onSeekToTime) {
-      onSeekToTime(seekTime);
-    }
-    handleCloseSeekTimeDialog();
-  };
-
-  // 시간 입력 처리 (MM:SS 형식)
-  const handleTimeInputChange = (value) => {
-    const timeRegex = /^(\d{1,2}):(\d{2})$/;
-    const match = value.match(timeRegex);
-    
-    if (match) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      
-      if (seconds < 60) {
-        const totalSeconds = minutes * 60 + seconds;
-        setSeekTime(totalSeconds);
-      }
-    }
-  };
-
   // 댓글 내용에서 시간 형식 추출 및 클릭 가능하게 렌더링
   const renderCommentContent = (content) => {
     // [MM:SS] 형식의 시간을 찾는 정규식
@@ -307,27 +264,18 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
   };
 
   const renderComment = (comment, isReply = false) => {
-    const isAuthor = comment.userId === currentUser?.id;
-    const isEditing = editingComment?.id === comment.id;
-    const isReplying = replyTo?.id === comment.id;
+    const isAuthor = currentUser && comment.userId === currentUser.id;
+    const isEditing = editingComment && editingComment.id === comment.id;
+    const isReplying = replyTo && replyTo.id === comment.id;
     const hasReplies = comment.replies && comment.replies.length > 0;
     const isExpanded = expandedReplies.has(comment.id);
 
     return (
-      <ListItem
-        key={comment.id}
-        sx={{
-          flexDirection: 'column',
-          alignItems: 'flex-start',
-          pl: isReply ? 4 : 2,
-          pr: 2,
-          py: 1
-        }}
-      >
-        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start' }}>
+      <Box key={comment.id} sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
           <ListItemAvatar>
-            <Avatar>
-              {comment.userName ? comment.userName.charAt(0) : 'U'}
+            <Avatar sx={{ width: 32, height: 32, fontSize: '14px' }}>
+              {(comment.userName || '사용자').charAt(0)}
             </Avatar>
           </ListItemAvatar>
           
@@ -339,23 +287,6 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
               <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
                 {formatDate(comment.createdAt)}
               </Typography>
-              {comment.timestamp !== null && (
-                <Chip 
-                  label={formatTime(comment.timestamp)} 
-                  size="small" 
-                  variant="outlined"
-                  sx={{ 
-                    mr: 1,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      backgroundColor: '#e3f2fd',
-                      borderColor: '#2196f3'
-                    }
-                  }}
-                  onClick={() => handleOpenSeekTimeDialog(comment.timestamp)}
-                  title="클릭하여 시간 선택"
-                />
-              )}
               {isAuthor && (
                 <Chip 
                   label="작성자" 
@@ -367,7 +298,7 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
             </Box>
 
             {isEditing ? (
-              <Box sx={{ width: '100%' }}>
+              <Box sx={{ mb: 1 }}>
                 <TextField
                   fullWidth
                   multiline
@@ -383,9 +314,8 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
                     size="small"
                     variant="contained"
                     onClick={handleEditComment}
-                    disabled={loading}
                   >
-                    수정
+                    저장
                   </Button>
                   <Button
                     size="small"
@@ -400,7 +330,7 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
                 </Box>
               </Box>
             ) : (
-              <Typography variant="body2" sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ mb: 1, whiteSpace: 'pre-wrap' }}>
                 {renderCommentContent(comment.content)}
               </Typography>
             )}
@@ -454,7 +384,12 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
         </Box>
 
         {isReplying && !isReply && (
-          <Box sx={{ width: '100%', mt: 2, pl: 4 }}>
+          <Box sx={{ ml: 4, mt: 1, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+              <Avatar sx={{ width: 24, height: 24, fontSize: '12px', mr: 1 }}>
+                {currentUser.name.charAt(0)}
+              </Avatar>
+              <Box sx={{ flex: 1 }}>
             <TextField
               fullWidth
               multiline
@@ -471,8 +406,6 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
                 size="small"
                 variant="contained"
                 onClick={() => handleSubmitReply(comment.id)}
-                disabled={loading}
-                startIcon={<SendIcon />}
               >
                 답글 작성
               </Button>
@@ -486,33 +419,25 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
               >
                 취소
               </Button>
+                </Box>
+              </Box>
             </Box>
           </Box>
         )}
 
         {hasReplies && isExpanded && !isReply && (
-          <Box sx={{ width: '100%', mt: 1 }}>
-            {comment.replies.map(reply => renderComment(reply, true))}
+          <Box sx={{ ml: 4, mt: 1 }}>
+            {comment.replies.map((reply) => renderComment(reply, true))}
           </Box>
         )}
-      </ListItem>
+      </Box>
     );
   };
 
-  if (!currentUser) {
     return (
-      <Box sx={{ mt: 4, textAlign: 'center', py: 4 }}>
-        <Typography color="text.secondary">
-          댓글을 작성하려면 로그인이 필요합니다.
-        </Typography>
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ mt: 4 }}>
-      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', fontSize: '18px' }}>
-        💬 댓글 ({loading ? '...' : commentCount})
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+        댓글 ({commentCount})
       </Typography>
 
       {error && (
@@ -575,28 +500,17 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
 
       {/* 검색 결과 표시 */}
       {searchKeyword && (
-        <Alert 
-          severity="info" 
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={handleClearSearch}>
-              검색 초기화
-            </Button>
-          }
-        >
-          "{searchKeyword}" 검색 결과: {commentCount}개의 댓글
+        <Alert severity="info" sx={{ mb: 2 }}>
+          "{searchKeyword}" 검색 결과: {comments.length}개
         </Alert>
       )}
 
       {/* 댓글 작성 영역 */}
-      <Box sx={{ mb: 3, backgroundColor: '#f8f9fa', p: 2, borderRadius: '8px' }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-          <Avatar sx={{ mt: 1 }}>
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.name} />
-            ) : (
-              currentUser.name.charAt(0)
-            )}
+      {currentUser && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+            <Avatar sx={{ width: 40, height: 40 }}>
+              {currentUser.name.charAt(0)}
           </Avatar>
           <Box sx={{ flex: 1 }}>
             <TextField
@@ -640,121 +554,25 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
           </Box>
         </Box>
       </Box>
+      )}
 
       <Divider sx={{ mb: 2 }} />
 
       {/* 댓글 목록 */}
       <Box>
-        {(loading || searchLoading) && comments.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
-            <Typography sx={{ mt: 2 }} color="text.secondary">
-              {searchLoading ? '검색 중...' : '댓글을 불러오는 중...'}
-            </Typography>
           </Box>
         ) : comments.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">
-              {searchKeyword ? '검색 결과가 없습니다.' : '아직 댓글이 없습니다. 첫 번째 댓글을 남겨보세요!'}
-            </Typography>
+          <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+            <Typography variant="body2">아직 댓글이 없습니다.</Typography>
+            <Typography variant="body2">첫 번째 댓글을 작성해보세요!</Typography>
           </Box>
         ) : (
-          <List sx={{ p: 0 }}>
-            {comments.map(comment => renderComment(comment))}
-          </List>
+          comments.map((comment) => renderComment(comment))
         )}
       </Box>
-
-      {/* 시간 이동 모달 */}
-      <Dialog open={isSeekTimeDialogOpen} onClose={handleCloseSeekTimeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AccessTimeIcon />
-          시간 이동
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              현재 시간: {formatTime(Math.floor(currentTime))}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              이동할 시간: {formatTime(seekTime)}
-            </Typography>
-          </Box>
-          
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="subtitle2" sx={{ mb: 2 }}>
-              시간 직접 입력 (MM:SS 형식)
-            </Typography>
-            <TextField
-              fullWidth
-              placeholder="예: 02:30"
-              value={formatTime(seekTime)}
-              onChange={(e) => handleTimeInputChange(e.target.value)}
-              variant="outlined"
-              size="small"
-              sx={{ mb: 2 }}
-            />
-          </Box>
-
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 2 }}>
-              슬라이더로 시간 조정
-            </Typography>
-            <Slider
-              value={seekTime}
-              onChange={(event, newValue) => setSeekTime(newValue)}
-              min={0}
-              max={Math.max(300, Math.floor(currentTime) + 60)} // 최소 5분, 현재 시간 + 1분
-              step={1}
-              valueLabelDisplay="auto"
-              valueLabelFormat={(value) => formatTime(value)}
-              sx={{ mb: 1 }}
-            />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary">
-                0:00
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {formatTime(Math.max(300, Math.floor(currentTime) + 60))}
-              </Typography>
-            </Box>
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setSeekTime(Math.max(0, Math.floor(currentTime) - 30))}
-            >
-              -30초
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setSeekTime(Math.floor(currentTime))}
-            >
-              현재 시간
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setSeekTime(Math.floor(currentTime) + 30)}
-            >
-              +30초
-            </Button>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseSeekTimeDialog}>취소</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleSeekToSelectedTime}
-            startIcon={<AccessTimeIcon />}
-          >
-            이동
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

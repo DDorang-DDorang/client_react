@@ -128,8 +128,34 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
         gap: '12px'
       }}>
         {isAuthenticated ? (
-          // 로그인된 경우: 세팅/비디오, 로그아웃 버튼
+          // 로그인된 경우: 팀 관리, 세팅/비디오, 로그아웃 버튼
           <>
+            <div 
+              style={{
+                padding: '10px 20px',
+                color: '#6c757d',
+                fontSize: '16px', 
+                fontFamily: 'Inter, sans-serif', 
+                fontWeight: '500', 
+                cursor: 'pointer',
+                borderRadius: '25px',
+                transition: 'all 0.3s ease',
+                background: 'transparent'
+              }}
+              onClick={() => handleNavigation('/teams')}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#f8f9fa';
+                e.target.style.color = '#000000';
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'transparent';
+                e.target.style.color = '#6c757d';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              Teams
+            </div>
             <div 
               style={{
                 padding: '10px 20px',

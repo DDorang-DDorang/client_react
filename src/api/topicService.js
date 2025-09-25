@@ -162,7 +162,7 @@ const topicService = {
     },
 
     // 새 토픽 생성
-    createTopic: async (title, userId) => {
+    createTopic: async (title, userId, isTeamTopic = false, teamId = null) => {
         try {
             const userProvider = getUserProvider();
             
@@ -175,10 +175,18 @@ const topicService = {
                 };
             }
             
-            const response = await api.post('/api/topics', {
+            const requestData = {
                 title,
                 userId
-            });
+            };
+            
+            // 팀 토픽인 경우 추가 정보 포함
+            if (isTeamTopic && teamId) {
+                requestData.isTeamTopic = true;
+                requestData.teamId = teamId;
+            }
+            
+            const response = await api.post('/api/topics', requestData);
             return {
                 success: true,
                 data: response.data
@@ -207,7 +215,8 @@ const topicService = {
                     id: generateId(),
                     title: title,
                     userId: userId,
-                    isTeamTopic: false,
+                    isTeamTopic: isTeamTopic || false,
+                    teamId: teamId || null,
                     presentationCount: 0,
                     createdAt: new Date().toISOString(),
                     isLocal: true

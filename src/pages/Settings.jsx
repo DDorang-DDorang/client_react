@@ -30,7 +30,7 @@ import {
     Save as SaveIcon,
     Cancel as CancelIcon
 } from '@mui/icons-material';
-import Navbar from '../components/Navbar';
+
 import authService from '../api/authService';
 import { logout as authLogout, fetchUserInfo, setUser } from '../store/slices/authSlice';
 import useError from '../hooks/useError';
@@ -144,8 +144,7 @@ const Settings = () => {
 
     return (
         <>
-            <Navbar showSidebarToggle={false} />
-            <Container maxWidth="md" sx={{ mt: 4, mb: 4, paddingTop: '80px' }}>
+            <Container maxWidth="md" sx={{ mb: 4 }}>
                 <Typography variant="h4" component="h1" gutterBottom>
                     설정
                 </Typography>

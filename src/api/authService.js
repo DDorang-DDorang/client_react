@@ -88,21 +88,46 @@ const authService = {
                 if (tokenParts.length === 3) {
                     // JWT 토큰인 경우
                     const payload = JSON.parse(atob(tokenParts[1]));
+                    console.log('JWT 토큰 페이로드:', payload);
+                    
                     const email = payload.sub || payload.email;
                     
                     if (email) {
+                        // 로컬 스토리지에서 기존 userId 확인
+                        let userId = payload.userId;
+                        if (!userId) {
+                            try {
+                                const topicStorage = localStorage.getItem('topic-storage');
+                                if (topicStorage) {
+                                    const topicData = JSON.parse(topicStorage);
+                                    if (topicData.state && topicData.state.topics && topicData.state.topics.length > 0) {
+                                        userId = topicData.state.topics[0].userId;
+                                        console.log('로컬 스토리지에서 userId 추출:', userId);
+                                    }
+                                }
+                            } catch (e) {
+                                console.log('로컬 스토리지 파싱 실패:', e);
+                            }
+                        }
+                        
+                        // userId가 여전히 없으면 email 사용
+                        if (!userId) {
+                            userId = email;
+                        }
+                        
                         userInfo = {
-                            userId: payload.userId || null,
+                            userId: userId,
                             email: email,
                             name: payload.name || email.split('@')[0],
                             provider: 'LOCAL' // JWT 토큰이면 일반 로그인
                         };
                         
                         console.log('JWT 토큰에서 사용자 정보 추출:', userInfo);
+                        console.log('JWT userId 필드:', payload.userId);
                     }
                 }
             } catch (jwtError) {
-                console.log('JWT 파싱 실패, Google OAuth 토큰으로 추정');
+                console.log('JWT 파싱 실패, Google OAuth 토큰으로 추정:', jwtError);
                 // JWT가 아니면 Google OAuth 토큰으로 간주
             }
 

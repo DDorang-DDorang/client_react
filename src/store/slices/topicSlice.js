@@ -20,7 +20,25 @@ const topicSlice = createSlice({
       state.currentTopic = action.payload;
     },
     addTopic(state, action) {
-      state.topics.push(action.payload);
+      const newTopic = action.payload;
+      
+      if (newTopic.isTeamTopic && newTopic.teamId) {
+        // 팀 토픽인 경우, 해당 팀의 토픽들을 찾아서 맨 앞에 추가
+        const teamTopicIndex = state.topics.findIndex(topic => 
+          topic.isTeamTopic && topic.teamId === newTopic.teamId
+        );
+        
+        if (teamTopicIndex !== -1) {
+          // 해당 팀의 첫 번째 토픽 앞에 삽입
+          state.topics.splice(teamTopicIndex, 0, newTopic);
+        } else {
+          // 해당 팀의 토픽이 없으면 맨 앞에 추가
+          state.topics.unshift(newTopic);
+        }
+      } else {
+        // 개인 토픽이거나 팀 정보가 없는 경우 기존 방식대로 맨 뒤에 추가
+        state.topics.push(newTopic);
+      }
     },
     updateTopic(state, action) {
       const { topicId, updates } = action.payload;
@@ -109,6 +127,17 @@ const topicSlice = createSlice({
           presentationCount: topicPresentations.length
         };
       });
+    },
+    loadTopicsFromLocalStorage(state) {
+      try {
+        const localTopics = JSON.parse(localStorage.getItem('ddorang_topics') || '[]');
+        // 기존 토픽과 로컬 토픽을 병합 (중복 제거)
+        const existingIds = new Set(state.topics.map(t => t.id));
+        const newLocalTopics = localTopics.filter(t => !existingIds.has(t.id));
+        state.topics = [...state.topics, ...newLocalTopics];
+      } catch (error) {
+        console.error('로컬 스토리지에서 토픽 로드 실패:', error);
+      }
     }
   }
 });
@@ -129,7 +158,8 @@ export const {
   setError,
   clearError,
   reset,
-  syncTopicsWithPresentations
+  syncTopicsWithPresentations,
+  loadTopicsFromLocalStorage
 } = topicSlice.actions;
 
 export default topicSlice.reducer; 

@@ -176,6 +176,12 @@ const Dashboard = () => {
                 return;
             }
 
+            // 디버깅 정보 출력
+            console.log('=== 프레젠테이션 생성 디버깅 정보 ===');
+            console.log('현재 사용자:', user);
+            console.log('현재 토픽:', currentTopic);
+            console.log('토픽이 팀 토픽인가?', currentTopic.isTeamTopic);
+            console.log('토픽의 팀 ID:', currentTopic.teamId);
             console.log('파일 업로드:', uploadData);
             
             // uploadData가 객체인지 파일인지 확인
@@ -693,7 +699,7 @@ const Dashboard = () => {
                                         <div style={{
                                             fontSize: '16px'
                                         }}>
-                                            {topic.isTeamTopic ? '👥' : '📁'}
+                                            📁
                                         </div>
                                         <div>
                                             <div style={{

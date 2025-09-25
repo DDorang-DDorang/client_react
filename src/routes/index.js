@@ -9,6 +9,7 @@ import OAuth2RedirectHandler from '../pages/OAuth2RedirectHandler';
 import Dashboard from '../pages/Dashboard';
 import VideoAnalysis from '../pages/VideoAnalysis';
 import Settings from '../pages/Settings';
+import TeamManagement from '../pages/TeamManagement';
 import PrivateRoute from './PrivateRoute';
 
 const AppRoutes = () => {
@@ -54,6 +55,24 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <Settings />
+          </PrivateRoute>
+        } 
+      />
+
+      <Route 
+        path="/teams" 
+        element={
+          <PrivateRoute>
+            <TeamManagement />
+          </PrivateRoute>
+        } 
+      />
+
+      <Route 
+        path="/teams/:teamId" 
+        element={
+          <PrivateRoute>
+            <TeamManagement />
           </PrivateRoute>
         } 
       />
