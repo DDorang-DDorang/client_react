@@ -125,66 +125,159 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '12px'
+        gap: '8px'
       }}>
         {isAuthenticated ? (
-          // 로그인된 경우: 팀 관리, 세팅/비디오, 로그아웃 버튼
+          // 로그인된 경우: 네비게이션 메뉴
           <>
+            {/* Dashboard */}
             <div 
               style={{
-                padding: '10px 20px',
-                color: '#6c757d',
+                padding: '10px 16px',
+                color: location.pathname === '/dashboard' ? '#1976d2' : '#6c757d',
                 fontSize: '16px', 
                 fontFamily: 'Inter, sans-serif', 
                 fontWeight: '500', 
                 cursor: 'pointer',
                 borderRadius: '25px',
                 transition: 'all 0.3s ease',
-                background: 'transparent'
+                background: location.pathname === '/dashboard' ? '#e3f2fd' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onClick={() => handleNavigation('/dashboard')}
+              onMouseEnter={(e) => {
+                if (location.pathname !== '/dashboard') {
+                  e.target.style.background = '#f8f9fa';
+                  e.target.style.color = '#000000';
+                }
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                if (location.pathname !== '/dashboard') {
+                  e.target.style.background = 'transparent';
+                  e.target.style.color = '#6c757d';
+                }
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>🏠</span>
+              <span>대시보드</span>
+            </div>
+
+            {/* Comparison */}
+            <div 
+              style={{
+                padding: '10px 16px',
+                color: location.pathname === '/comparison' ? '#1976d2' : '#6c757d',
+                fontSize: '16px', 
+                fontFamily: 'Inter, sans-serif', 
+                fontWeight: '500', 
+                cursor: 'pointer',
+                borderRadius: '25px',
+                transition: 'all 0.3s ease',
+                background: location.pathname === '/comparison' ? '#e3f2fd' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onClick={() => handleNavigation('/comparison')}
+              onMouseEnter={(e) => {
+                if (location.pathname !== '/comparison') {
+                  e.target.style.background = '#f8f9fa';
+                  e.target.style.color = '#000000';
+                }
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                if (location.pathname !== '/comparison') {
+                  e.target.style.background = 'transparent';
+                  e.target.style.color = '#6c757d';
+                }
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>📊</span>
+              <span>발표 비교</span>
+            </div>
+
+            {/* Settings */}
+            <div 
+              style={{
+                padding: '10px 16px',
+                color: location.pathname === '/settings' ? '#1976d2' : '#6c757d',
+                fontSize: '16px', 
+                fontFamily: 'Inter, sans-serif', 
+                fontWeight: '500', 
+                cursor: 'pointer',
+                borderRadius: '25px',
+                transition: 'all 0.3s ease',
+                background: location.pathname === '/settings' ? '#e3f2fd' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onClick={() => handleNavigation('/settings')}
+              onMouseEnter={(e) => {
+                if (location.pathname !== '/settings') {
+                e.target.style.background = '#f8f9fa';
+                e.target.style.color = '#000000';
+                }
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                if (location.pathname !== '/settings') {
+                e.target.style.background = 'transparent';
+                e.target.style.color = '#6c757d';
+                }
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>⚙️</span>
+              <span>설정</span>
+            </div>
+
+            {/* Teams */}
+            <div 
+              style={{
+                padding: '10px 16px',
+                color: location.pathname.startsWith('/teams') ? '#1976d2' : '#6c757d',
+                fontSize: '16px', 
+                fontFamily: 'Inter, sans-serif', 
+                fontWeight: '500', 
+                cursor: 'pointer',
+                borderRadius: '25px',
+                transition: 'all 0.3s ease',
+                background: location.pathname.startsWith('/teams') ? '#e3f2fd' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}
               onClick={() => handleNavigation('/teams')}
               onMouseEnter={(e) => {
+                if (!location.pathname.startsWith('/teams')) {
                 e.target.style.background = '#f8f9fa';
                 e.target.style.color = '#000000';
+                }
                 e.target.style.transform = 'translateY(-2px)';
               }}
               onMouseLeave={(e) => {
+                if (!location.pathname.startsWith('/teams')) {
                 e.target.style.background = 'transparent';
                 e.target.style.color = '#6c757d';
+                }
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              Teams
+              <span>👥</span>
+              <span>팀 관리</span>
             </div>
+
+            {/* Logout */}
             <div 
               style={{
-                padding: '10px 20px',
-                color: '#6c757d',
-                fontSize: '16px', 
-                fontFamily: 'Inter, sans-serif', 
-                fontWeight: '500', 
-                cursor: 'pointer',
-                borderRadius: '25px',
-                transition: 'all 0.3s ease',
-                background: 'transparent'
-              }}
-              onClick={() => handleNavigation(isSettingsPage ? '/dashboard' : '/settings')}
-              onMouseEnter={(e) => {
-                e.target.style.background = '#f8f9fa';
-                e.target.style.color = '#000000';
-                e.target.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = 'transparent';
-                e.target.style.color = '#6c757d';
-                e.target.style.transform = 'translateY(0)';
-              }}
-            >
-              {isSettingsPage ? 'Video' : 'Settings'}
-            </div>
-            <div 
-              style={{
-                padding: '10px 20px',
+                padding: '10px 16px',
                 color: '#ffffff', 
                 fontSize: '16px', 
                 fontFamily: 'Inter, sans-serif', 
@@ -193,7 +286,8 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 borderRadius: '25px',
                 background: '#000000',
                 transition: 'all 0.3s ease',
-                border: 'none'
+                border: 'none',
+                marginLeft: '8px'
               }}
               onClick={handleLogout}
               onMouseEnter={(e) => {
@@ -207,7 +301,7 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 e.target.style.boxShadow = 'none';
               }}
             >
-              Logout
+              로그아웃
             </div>
           </>
         ) : (

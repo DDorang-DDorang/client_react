@@ -40,6 +40,11 @@ export const API_ROUTES = {
     UPLOAD_VIDEO: '/api/presentations/:id/video',
     GET_ANALYSIS: '/api/presentations/:id/analysis',
   },
+  COMPARISON: {
+    COMPARE: '/api/presentations/:presentationId/compare-with/:otherPresentationId',
+    GET_USER_COMPARISONS: '/api/presentations/comparisons',
+    GET_PRESENTATION_COMPARISONS: '/api/presentations/:presentationId/comparisons',
+  },
   // TODO: 서버에 구현 필요
   TOPIC: {
     CREATE: '/api/topics',

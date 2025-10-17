@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = true, showGrid = true, isPreview = false }) => {
+const PentagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = true, showGrid = true, isPreview = false }) => {
     const canvasRef = useRef(null);
     
     const labels = {
         voice: '음성',
         speed: '속도',
-        anxiety: '불안(미구현)',
-        eyeContact: '시선(미구현)',
+        expression: '표정',
         pitch: '피치',
         clarity: '명확성'
     };
@@ -16,8 +15,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
     const defaultData = {
         voice: 0,
         speed: 0,
-        anxiety: 0,
-        eyeContact: 0,
+        expression: 0,
         pitch: 0,
         clarity: 0
     };
@@ -82,7 +80,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
         const radius = isSidebarChart 
             ? Math.min(centerX, centerY)  // 사이드바: 최대한 크게
             : Math.min(centerX, centerY) - 60; // 상세 분석: 적절한 여백
-        const sides = 6;
+        const sides = 5;
 
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -91,8 +89,8 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
         ctx.fillStyle = colors.background;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Helper function to get point on hexagon
-        const getHexPoint = (index, radiusMultiplier = 1) => {
+        // Helper function to get point on pentagon
+        const getPentPoint = (index, radiusMultiplier = 1) => {
             const angle = (index * 2 * Math.PI) / sides - Math.PI / 2;
             return {
                 x: centerX + Math.cos(angle) * radius * radiusMultiplier,
@@ -105,13 +103,13 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
             ctx.strokeStyle = colors.grid;
             ctx.lineWidth = 1;
             
-            // Draw hexagon grid lines
+            // Draw pentagon grid lines
             for (let i = 0; i < sides; i++) {
-                const point1 = getHexPoint(i, 0.2);
-                const point2 = getHexPoint(i, 0.4);
-                const point3 = getHexPoint(i, 0.6);
-                const point4 = getHexPoint(i, 0.8);
-                const point5 = getHexPoint(i, 1.0);
+                const point1 = getPentPoint(i, 0.2);
+                const point2 = getPentPoint(i, 0.4);
+                const point3 = getPentPoint(i, 0.6);
+                const point4 = getPentPoint(i, 0.8);
+                const point5 = getPentPoint(i, 1.0);
                 
                 ctx.beginPath();
                 ctx.moveTo(point1.x, point1.y);
@@ -124,36 +122,36 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
 
             // Draw connecting lines
             for (let i = 0; i < sides; i++) {
-                const point1 = getHexPoint(i, 0.2);
-                const point2 = getHexPoint((i + 1) % sides, 0.2);
+                const point1 = getPentPoint(i, 0.2);
+                const point2 = getPentPoint((i + 1) % sides, 0.2);
                 ctx.beginPath();
                 ctx.moveTo(point1.x, point1.y);
                 ctx.lineTo(point2.x, point2.y);
                 ctx.stroke();
                 
-                const point3 = getHexPoint(i, 0.4);
-                const point4 = getHexPoint((i + 1) % sides, 0.4);
+                const point3 = getPentPoint(i, 0.4);
+                const point4 = getPentPoint((i + 1) % sides, 0.4);
                 ctx.beginPath();
                 ctx.moveTo(point3.x, point3.y);
                 ctx.lineTo(point4.x, point4.y);
                 ctx.stroke();
                 
-                const point5 = getHexPoint(i, 0.6);
-                const point6 = getHexPoint((i + 1) % sides, 0.6);
+                const point5 = getPentPoint(i, 0.6);
+                const point6 = getPentPoint((i + 1) % sides, 0.6);
                 ctx.beginPath();
                 ctx.moveTo(point5.x, point5.y);
                 ctx.lineTo(point6.x, point6.y);
                 ctx.stroke();
                 
-                const point7 = getHexPoint(i, 0.8);
-                const point8 = getHexPoint((i + 1) % sides, 0.8);
+                const point7 = getPentPoint(i, 0.8);
+                const point8 = getPentPoint((i + 1) % sides, 0.8);
                 ctx.beginPath();
                 ctx.moveTo(point7.x, point7.y);
                 ctx.lineTo(point8.x, point8.y);
                 ctx.stroke();
                 
-                const point9 = getHexPoint(i, 1.0);
-                const point10 = getHexPoint((i + 1) % sides, 1.0);
+                const point9 = getPentPoint(i, 1.0);
+                const point10 = getPentPoint((i + 1) % sides, 1.0);
                 ctx.beginPath();
                 ctx.moveTo(point9.x, point9.y);
                 ctx.lineTo(point10.x, point10.y);
@@ -163,7 +161,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
 
         // Draw data polygon
         const dataPoints = [];
-        const axisOrder = ['voice', 'speed', 'anxiety', 'eyeContact', 'pitch', 'clarity'];
+        const axisOrder = ['voice', 'speed', 'expression', 'pitch', 'clarity'];
         
         axisOrder.forEach((key, index) => {
             const value = safeData[key];
@@ -178,7 +176,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
                 normalizedValue = (value || 0) / 100;
             }
             
-            const point = getHexPoint(index, normalizedValue * animationProgress);
+            const point = getPentPoint(index, normalizedValue * animationProgress);
             dataPoints.push(point);
         });
 
@@ -226,7 +224,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
                 
                 // 차트 외각에 라벨 배치 (각 축의 끝점에서 약간 바깥쪽)
                 const outerRadius = radius * 1.2; // 차트보다 20% 더 바깥쪽
-                const outerPoint = getHexPoint(index, outerRadius / radius);
+                const outerPoint = getPentPoint(index, outerRadius / radius);
                 
                 // 일반 모드에서는 능력치 이름과 등급을 함께 표시
                 ctx.fillText(`${label}`, outerPoint.x, outerPoint.y - 8);
@@ -276,8 +274,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
     const categoryIcons = {
         voice: '🎤',
         speed: '⚡',
-        anxiety: '😰',
-        eyeContact: '👁️',
+        expression: '😊',
         pitch: '🎵',
         clarity: '💬'
     };
@@ -314,7 +311,7 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
                 display: 'flex',
                 flexDirection: 'column'
             }}>
-                                        {/* Hexagon Chart - 고정 */}
+                                        {/* Pentagon Chart - 고정 */}
                         <div style={{
                             display: 'flex',
                             justifyContent: 'center',
@@ -486,4 +483,4 @@ const HexagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tru
     );
 };
 
-export default HexagonChart; 
+export default PentagonChart;

@@ -7,7 +7,7 @@ import TopicCreator from './TopicCreator';
 import TopicManager from './TopicManager';
 import PresentationManager from './PresentationManager';
 import VideoPlayer from './VideoPlayer';
-import HexagonChart from './HexagonChart';
+import PentagonChart from './PentagonChart';
 import TeamCreator from './team/TeamCreator';
 import TeamJoin from './team/TeamJoin';
 import TeamInvite from './team/TeamInvite';
@@ -85,8 +85,11 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     }, [teamTopics.length]); // teamTopics.length만 의존성으로 사용
 
     useEffect(() => {
-        if (currentTopic) {
-            loadPresentations(currentTopic.id);
+        // refreshKey가 변경되면 모든 토픽의 발표 목록 새로고침
+        if (refreshKey > 0) {
+            topics.forEach(topic => {
+                loadPresentations(topic.id);
+            });
         }
     }, [refreshKey]);
 
@@ -109,6 +112,11 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                 
                 // 서버 데이터를 Redux store에 설정
                 dispatch(setTopics(serverTopics));
+                
+                // 모든 토픽의 발표 개수를 로드 (사이드바 표시용)
+                serverTopics.forEach(topic => {
+                    loadPresentations(topic.id);
+                });
                 
                 // 로컬 데이터 사용 시 알림
                 if (result.isLocal) {
@@ -206,6 +214,23 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
         return gradeMap[data.pitchGrade] || 75;
     };
 
+    const calculateExpressionScore = (data) => {
+        if (!data.expressionGrade) return 75;
+        
+        // 한글 등급을 영문 등급으로 변환
+        const koreanToEnglish = {
+            '매우 좋음': 'A',
+            '좋음': 'B', 
+            '보통': 'C',
+            '나쁨': 'D',
+            '매우 나쁨': 'F'
+        };
+        
+        const englishGrade = koreanToEnglish[data.expressionGrade] || data.expressionGrade;
+        const gradeMap = { 'A': 90, 'B': 80, 'C': 70, 'D': 60, 'F': 50 };
+        return gradeMap[englishGrade] || 75;
+    };
+
     const calculateClarityScore = (data) => {
         if (!data.pronunciationScore) return 75;
         return Math.round(data.pronunciationScore * 100);
@@ -228,6 +253,8 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             wpmGrade: data.voiceAnalysis?.wpmGrade || '보통',
             wpmAvg: data.voiceAnalysis?.wpmAvg,
             wpmComment: data.voiceAnalysis?.wpmComment || '말하기 속도가 적당합니다.',
+            expressionGrade: data.voiceAnalysis?.expressionGrade || '보통',
+            expressionText: data.voiceAnalysis?.expressionText || '표정이 자연스럽습니다.',
             transcription: data.sttResult?.transcription || '',
             pronunciationScore: data.sttResult?.pronunciationScore || 0.75
         };
@@ -236,8 +263,7 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
         const scores = {
             voice: calculateVoiceScore(fastApiData),
             speed: calculateSpeedScore(fastApiData),
-            anxiety: 75,
-            eyeContact: 75,
+            expression: calculateExpressionScore(fastApiData),
             pitch: calculatePitchScore(fastApiData),
             clarity: calculateClarityScore(fastApiData)
         };
@@ -756,18 +782,55 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                             {topic.name || topic.title}
                         </div>
 
-                        {/* 프레젠테이션 개수 */}
+                        {/* 프레젠테이션 개수 (최대 2개) */}
                         <div style={{
                             fontSize: '12px',
-                            color: '#666666',
-                            backgroundColor: '#f0f0f0',
+                            color: presentationsForTopic.length >= 2 ? '#dc3545' : '#666666',
+                            backgroundColor: presentationsForTopic.length >= 2 ? '#ffe0e0' : '#f0f0f0',
                             borderRadius: '10px',
-                            padding: '2px 6px',
-                            minWidth: '20px',
-                            textAlign: 'center'
+                            padding: '2px 8px',
+                            minWidth: '35px',
+                            textAlign: 'center',
+                            fontWeight: presentationsForTopic.length >= 2 ? '600' : '400'
                         }}>
-                            {topic.presentationCount || 0}
+                            {presentationsForTopic.length}/2
                         </div>
+
+                        {/* 비교하기 버튼 (발표가 정확히 2개일 때만 표시) */}
+                        {presentationsForTopic.length === 2 && (
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/comparison', { 
+                                        state: { 
+                                            selectedTopic: topic 
+                                        } 
+                                    });
+                                }}
+                                style={{
+                                    fontSize: '11px',
+                                    color: '#1976d2',
+                                    backgroundColor: '#e3f2fd',
+                                    borderRadius: '8px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#1976d2';
+                                    e.currentTarget.style.color = '#ffffff';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#e3f2fd';
+                                    e.currentTarget.style.color = '#1976d2';
+                                }}
+                                title="두 발표를 비교합니다"
+                            >
+                                ⚖️ 비교
+                            </div>
+                        )}
 
                         {/* 확장/축소 아이콘 */}
                         <div 
@@ -943,7 +1006,7 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                                                         margin: '0 auto'
                                                     }}>
                                                         {hasAnalysis ? (
-                                                            <HexagonChart
+                                                            <PentagonChart
                                                                 data={analysisData.scores}
                                                                 size={180}
                                                                 showLabels={false}
@@ -1044,10 +1107,12 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             height: '100vh',
             background: '#ffffff',
             transition: 'left 0.3s ease-in-out',
-            zIndex: 999,
+            zIndex: 1000,
             borderRight: isCollapsed ? 'none' : '1px solid rgba(0, 0, 0, 0.1)',
             boxShadow: isCollapsed ? 'none' : '2px 0px 8px rgba(0, 0, 0, 0.1)',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            visibility: isCollapsed ? 'hidden' : 'visible',
+            opacity: isCollapsed ? 0 : 1
         }}>
             {/* Top spacing for navbar area */}
             <div style={{ height: '70px' }}></div>

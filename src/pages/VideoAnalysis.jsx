@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CollapsibleSidebar from '../components/CollapsibleSidebar';
-import HexagonChart from '../components/HexagonChart';
+import PentagonChart from '../components/PentagonChart';
 import CommentSection from '../components/CommentSection';
 import videoAnalysisService from '../api/videoAnalysisService';
 import useAuthValidation from '../hooks/useAuthValidation';
@@ -17,8 +17,7 @@ const defaultAnalysisData = {
     scores: {
         voice: 75,
         speed: 75,
-        anxiety: 75,
-        eyeContact: 75,
+        expression: 75,
         pitch: 75,
         clarity: 75
     },
@@ -35,16 +34,10 @@ const defaultAnalysisData = {
             text: '분석 결과가 없습니다.',
             wpm: 0
         },
-        anxiety: {
+        expression: {
             grade: 'N/A',
             score: 75,
-            text: '불안도 분석 기능은 현재 개발 중입니다.',
-            suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
-        },
-        eyeContact: {
-            grade: 'N/A',
-            score: 75,
-            text: '시선 처리 분석 기능은 현재 개발 중입니다.',
+            text: '표정 분석 기능은 현재 개발 중입니다.',
             suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
         },
         pitch: {
@@ -85,7 +78,10 @@ const VideoAnalysis = () => {
     const { presentationId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+        const saved = localStorage.getItem('sidebarCollapsed');
+        return saved ? JSON.parse(saved) : false;
+    });
     const [analysisData, setAnalysisData] = useState(null);
     const [videoData, setVideoData] = useState(null);
     const { error, setError, resetError } = useError('');
@@ -113,18 +109,19 @@ const VideoAnalysis = () => {
     console.log('location.pathname:', location.pathname);
     console.log('window.location:', window.location.href);
 
-    // HexagonChart에서 사용할 라벨 정의
+    // PentagonChart에서 사용할 라벨 정의
     const labels = {
         voice: '음성',
         speed: '속도',
-        anxiety: '불안(미구현)',
-        eyeContact: '시선(미구현)',
+        expression: '표정',
         pitch: '피치',
         clarity: '명확성'
     };
 
     const toggleSidebar = () => {
-        setIsSidebarCollapsed(!isSidebarCollapsed);
+        const newState = !isSidebarCollapsed;
+        setIsSidebarCollapsed(newState);
+        localStorage.setItem('sidebarCollapsed', JSON.stringify(newState));
     };
 
     // 비디오 시간 업데이트 핸들러
@@ -295,8 +292,7 @@ const VideoAnalysis = () => {
         const scores = {
             voice: calculateVoiceScore(voiceAnalysisData) || 'C',
             speed: calculateSpeedScore(voiceAnalysisData) || 'C',
-            anxiety: 'C',
-            eyeContact: 'C',
+            expression: calculateExpressionScore(voiceAnalysisData) || 'C',
             pitch: calculatePitchScore(voiceAnalysisData) || 'C',
             clarity: sttResult?.pronunciationScore ? calculatePronunciationScore(sttResult) : 'C'
         };
@@ -315,17 +311,11 @@ const VideoAnalysis = () => {
                 text: voiceAnalysisData.wpmComment || '말하기 속도가 적당합니다.',
                 suggestions: getSpeedSuggestions(voiceAnalysisData.wpmGrade)
             },
-            anxiety: {
-                grade: 'N/A',
-                score: scores.anxiety,
-                text: '불안도 분석 기능은 현재 개발 중입니다.',
-                suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
-            },
-            eyeContact: {
-                grade: 'N/A',
-                score: scores.eyeContact,
-                text: '시선 처리 분석 기능은 현재 개발 중입니다.',
-                suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
+            expression: {
+                grade: voiceAnalysisData.expressionGrade || 'C',
+                score: scores.expression,
+                text: voiceAnalysisData.expressionText || '표정 분석이 완료되었습니다.',
+                suggestions: getExpressionSuggestions(voiceAnalysisData.expressionGrade)
             },
             pitch: {
                 grade: voiceAnalysisData.pitchGrade || 'C',
@@ -360,8 +350,7 @@ const VideoAnalysis = () => {
         const scores = {
             voice: 'C',
             speed: 'C',
-            anxiety: 'C',
-            eyeContact: 'C',
+            expression: 'C',
             pitch: 'C',
             clarity: sttResult.pronunciationScore ? calculatePronunciationScore(sttResult) : 'C'
         };
@@ -380,17 +369,11 @@ const VideoAnalysis = () => {
                 text: '말하기 속도 분석이 완료되지 않았습니다.',
                 suggestions: ['말하기 속도 분석을 위해 비디오 분석을 다시 실행해주세요.']
                 },
-                anxiety: {
+                expression: {
                     grade: 'C',
-                score: scores.anxiety,
-                    text: '불안도 분석 기능은 현재 개발 중입니다.',
-                    suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
-                },
-                eyeContact: {
-                    grade: 'C',
-                score: scores.eyeContact,
-                    text: '시선 처리 분석 기능은 현재 개발 중입니다.',
-                    suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
+                score: scores.expression,
+                    text: '표정 분석이 완료되지 않았습니다.',
+                    suggestions: ['표정 분석을 위해 비디오 분석을 다시 실행해주세요.']
                 },
                 pitch: {
                 grade: 'C',
@@ -434,9 +417,19 @@ const VideoAnalysis = () => {
         return data.pitchGrade;
     };
 
-    const calculateConfidenceScore = (data) => {
-        // 불안도 분석은 아직 구현되지 않음
-        return 'C';
+    const calculateExpressionScore = (data) => {
+        if (!data || !data.expressionGrade) return 'C';
+        
+        // 한글 등급을 영문 등급으로 변환
+        const koreanToEnglish = {
+            '매우 좋음': 'A',
+            '좋음': 'B', 
+            '보통': 'C',
+            '나쁨': 'D',
+            '매우 나쁨': 'F'
+        };
+        
+        return koreanToEnglish[data.expressionGrade] || data.expressionGrade;
     };
 
     const calculateClarityScore = (data) => {
@@ -489,6 +482,29 @@ const VideoAnalysis = () => {
         return suggestions[grade] || ['피치 변화 분석이 필요합니다.'];
     };
 
+    const getExpressionSuggestions = (grade) => {
+        // 한글 등급을 영문 등급으로 변환
+        const koreanToEnglish = {
+            '매우 좋음': 'A',
+            '좋음': 'B', 
+            '보통': 'C',
+            '나쁨': 'D',
+            '매우 나쁨': 'F'
+        };
+        
+        const englishGrade = koreanToEnglish[grade] || grade;
+        
+        const suggestions = {
+            'A': ['표정이 매우 자연스럽고 적절합니다.', '계속 유지하세요.'],
+            'B': ['표정이 자연스럽습니다.', '조금 더 자신감 있는 표정을 해보세요.'],
+            'C': ['표정이 보통입니다.', '더 밝고 자신감 있는 표정을 연습해보세요.'],
+            'D': ['표정이 부자연스럽습니다.', '표정 연습을 더 해보세요.'],
+            'E': ['표정이 매우 부자연스럽습니다.', '거울을 보며 표정 연습을 해보세요.'],
+            'F': ['표정이 매우 부자연스럽습니다.', '거울을 보며 표정 연습을 해보세요.']
+        };
+        return suggestions[englishGrade] || ['표정 분석이 필요합니다.'];
+    };
+
     const getPronunciationSuggestions = (score) => {
         if (score >= 80) return ['발음이 매우 정확합니다.', '계속 유지하세요.'];
         if (score >= 60) return ['발음이 대체로 정확합니다.', '조금 더 정확하게 발음해보세요.'];
@@ -502,8 +518,7 @@ const VideoAnalysis = () => {
             scores: {
                 voice: 'C',
                 speed: 'C',
-                anxiety: 'C',
-                eyeContact: 'C',
+                expression: 'C',
                 pitch: 'C',
                 clarity: 'C'
             },
@@ -520,17 +535,11 @@ const VideoAnalysis = () => {
                     text: '분당 단어 수를 기준으로 말하기 속도를 평가합니다.',
                     suggestions: ['청중이 따라올 수 있는 속도로 말해보세요']
                 },
-                anxiety: {
+                expression: {
                     grade: 'N/A',
                     score: 75,
-                    text: '불안도 분석 기능은 현재 개발 중입니다.',
-                    suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
-                },
-                eyeContact: {
-                    grade: 'N/A',
-                    score: 70,
-                    text: '시선 처리 분석 기능은 현재 개발 중입니다.',
-                    suggestions: ['이 기능은 곧 업데이트될 예정입니다.']
+                    text: '표정의 자연스러움과 적절성을 평가합니다.',
+                    suggestions: ['자연스러운 표정을 유지해보세요', '자신감 있는 표정을 연습해보세요']
                 },
                 pitch: {
                     grade: 'N/A',
@@ -936,8 +945,6 @@ const VideoAnalysis = () => {
                         padding: '40px 20px',
                         fontSize: '16px'
                     }}>
-                        대본 데이터가 없습니다.
-                        <br />
                         음성이 포함된 영상을 업로드하면 STT 분석 결과를 확인할 수 있습니다.
                     </div>
                 )}
@@ -1061,7 +1068,8 @@ const VideoAnalysis = () => {
                 height: 'calc(100vh - 70px)',
                 transition: 'margin-left 0.3s ease-in-out',
                 display: 'flex',
-                gap: '20px'
+                gap: '20px',
+                padding: isSidebarCollapsed ? '0 20px' : '0'
             }}>
                 {/* Left Side - Video and Overall Score */}
                 <div style={{
@@ -1200,31 +1208,58 @@ const VideoAnalysis = () => {
                         </div>
                     </div>
 
-                    {/* Back Button */}
-                    <button
-                        onClick={() => navigate('/dashboard')}
-                        style={{
-                            padding: '12px 24px',
-                            backgroundColor: '#2C2C2C',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '16px',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            fontFamily: 'Inter, sans-serif',
-                            transition: 'background-color 0.2s ease',
-                            width: '100%'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = '#1C1C1C';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = '#2C2C2C';
-                        }}
-                    >
-                        🏠 대시보드로 돌아가기
-                    </button>
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                        <button
+                            onClick={() => navigate('/comparison')}
+                            style={{
+                                padding: '12px 24px',
+                                backgroundColor: '#9c27b0',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '16px',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                fontFamily: 'Inter, sans-serif',
+                                transition: 'background-color 0.2s ease',
+                                flex: 1
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#7b1fa2';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#9c27b0';
+                            }}
+                        >
+                            📊 발표 비교
+                        </button>
+                        
+                        <button
+                            onClick={() => navigate('/dashboard')}
+                            style={{
+                                padding: '12px 24px',
+                                backgroundColor: '#2C2C2C',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '16px',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                fontFamily: 'Inter, sans-serif',
+                                transition: 'background-color 0.2s ease',
+                                flex: 1
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#1C1C1C';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = '#2C2C2C';
+                            }}
+                        >
+                            🏠 대시보드
+                        </button>
+                    </div>
                 </div>
 
                 {/* Right Sidebar - 조건부 렌더링 */}
@@ -1241,7 +1276,7 @@ const VideoAnalysis = () => {
                         position: 'relative'
                     }}>
                         {currentView === 'analysis' ? (
-                            <HexagonChart 
+                            <PentagonChart 
                                 data={finalAnalysisData.scores} 
                                 analysisDetails={finalAnalysisData.details}
                             />

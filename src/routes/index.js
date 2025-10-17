@@ -8,6 +8,7 @@ import ForgotPassword from '../pages/ForgotPassword';
 import OAuth2RedirectHandler from '../pages/OAuth2RedirectHandler';
 import Dashboard from '../pages/Dashboard';
 import VideoAnalysis from '../pages/VideoAnalysis';
+import Comparison from '../pages/Comparison';
 import Settings from '../pages/Settings';
 import TeamManagement from '../pages/TeamManagement';
 import PrivateRoute from './PrivateRoute';
@@ -46,6 +47,15 @@ const AppRoutes = () => {
         element={
           <PrivateRoute skipAuthValidation={true}>
             <VideoAnalysis />
+          </PrivateRoute>
+        } 
+      />
+
+      <Route 
+        path="/comparison" 
+        element={
+          <PrivateRoute>
+            <Comparison />
           </PrivateRoute>
         } 
       />

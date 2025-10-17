@@ -9,7 +9,10 @@ const VideoUploader = ({
   presentationId = null, 
   enableAnalysis = false, 
   onAnalysisComplete = null,
-  initialVideoBlob = null // 대시보드에서 녹화된 비디오를 받기 위한 prop 추가
+  initialVideoBlob = null, // 대시보드에서 녹화된 비디오를 받기 위한 prop 추가
+  currentTopic = null, // 현재 선택된 토픽
+  topics = [], // 토픽 목록
+  onTopicSelect = null // 토픽 선택 콜백
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -24,8 +27,8 @@ const VideoUploader = ({
   // 프레젠테이션 정보 상태 추가
   const [presentationInfo, setPresentationInfo] = useState({
     title: '',
-    script: '',
-    goalTime: ''
+    goalTime: '',
+    selectedTopicId: currentTopic?.id || '' // 토픽 선택 상태 추가
   });
   
   const fileInputRef = useRef(null);
@@ -139,7 +142,6 @@ const VideoUploader = ({
         file: selectedFile || videoBlob,
         presentationInfo: {
           title: presentationInfo.title || (selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, "") : '녹화된 프레젠테이션'),
-          script: presentationInfo.script || '',
           goalTime: presentationInfo.goalTime ? parseInt(presentationInfo.goalTime) : null
         }
       };
@@ -235,7 +237,6 @@ const VideoUploader = ({
       setVideoUrl(null);
       setPresentationInfo({
         title: '',
-        script: '',
         goalTime: ''
       });
       if (fileInputRef.current) {
@@ -340,6 +341,59 @@ const VideoUploader = ({
             프레젠테이션 정보
           </h3>
           
+          {/* 토픽 선택 (topics가 있을 때만 표시) */}
+          {topics && topics.length > 0 && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{
+                display: 'block',
+                marginBottom: '4px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#555555'
+              }}>
+                토픽 선택 *
+              </label>
+              <select
+                value={presentationInfo.selectedTopicId}
+                onChange={(e) => {
+                  const topicId = e.target.value;
+                  setPresentationInfo(prev => ({
+                    ...prev,
+                    selectedTopicId: topicId
+                  }));
+                  if (onTopicSelect && topicId) {
+                    onTopicSelect(topicId);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  backgroundColor: '#ffffff',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">토픽을 선택하세요</option>
+                {topics.map(topic => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.title || topic.name} {topic.isTeamTopic ? '(팀)' : '(개인)'}
+                  </option>
+                ))}
+              </select>
+              <small style={{
+                display: 'block',
+                marginTop: '4px',
+                color: '#666666',
+                fontSize: '12px'
+              }}>
+                발표를 저장할 토픽을 선택하세요
+              </small>
+            </div>
+          )}
+          
           <div style={{ marginBottom: '12px' }}>
             <label style={{
               display: 'block',
@@ -400,32 +454,6 @@ const VideoUploader = ({
             </small>
           </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '4px',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: '#555555'
-            }}>
-              스크립트 (선택사항)
-            </label>
-            <textarea
-              value={presentationInfo.script}
-              onChange={handlePresentationInfoChange('script')}
-              placeholder="프레젠테이션에서 말할 내용을 입력하세요"
-              rows="3"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                resize: 'vertical'
-              }}
-            />
-          </div>
         </div>
 
         {/* 에러 메시지 */}

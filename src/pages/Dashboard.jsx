@@ -21,7 +21,10 @@ const Dashboard = () => {
     const currentTopic = useSelector(state => state.topic.currentTopic);
     const dispatch = useDispatch();
 
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+        const saved = localStorage.getItem('sidebarCollapsed');
+        return saved ? JSON.parse(saved) : false;
+    });
     const [showUploader, setShowUploader] = useState(false);
     const [videoFiles, setVideoFiles] = useState([]);
     const [currentStream, setCurrentStream] = useState(null);
@@ -33,6 +36,11 @@ const Dashboard = () => {
     // 토픽 선택 관련 상태
     const [showTopicSelector, setShowTopicSelector] = useState(false);
     const [selectedTopicForUpload, setSelectedTopicForUpload] = useState(null);
+    
+    // 발표 삭제 선택 모달 상태
+    const [showDeleteSelector, setShowDeleteSelector] = useState(false);
+    const [existingPresentations, setExistingPresentations] = useState([]);
+    const [pendingUploadData, setPendingUploadData] = useState(null);
     
     const videoRef = useRef(null);
     const recorderRef = useRef(null);
@@ -62,7 +70,9 @@ const Dashboard = () => {
     };
 
     const toggleSidebar = () => {
-        setIsSidebarCollapsed(!isSidebarCollapsed);
+        const newState = !isSidebarCollapsed;
+        setIsSidebarCollapsed(newState);
+        localStorage.setItem('sidebarCollapsed', JSON.stringify(newState));
     };
 
     // 카메라 녹화 관련 함수들
@@ -176,6 +186,20 @@ const Dashboard = () => {
                 return;
             }
 
+            // 토픽의 발표 개수 확인 (최대 2개)
+            try {
+                const presentations = await topicService.getPresentations(currentTopic.id);
+                if (presentations.success && presentations.data && presentations.data.length >= 2) {
+                    // 발표가 2개일 때 삭제 선택 모달 표시
+                    setExistingPresentations(presentations.data);
+                    setPendingUploadData(uploadData);
+                    setShowDeleteSelector(true);
+                    return;
+                }
+            } catch (err) {
+                console.error('발표 개수 확인 실패:', err);
+            }
+
             // 디버깅 정보 출력
             console.log('=== 프레젠테이션 생성 디버깅 정보 ===');
             console.log('현재 사용자:', user);
@@ -219,11 +243,15 @@ const Dashboard = () => {
                 // 업로드 성공 시 presentationId 반환 (VideoUploader에서 분석 처리)
                 return uploadResult.data;
             } else {
-                throw new Error(uploadResult.error);
+                // 백엔드에서 토픽당 2개 제한 에러가 올 수 있음
+                const errorMessage = uploadResult.error || '업로드에 실패했습니다.';
+                throw new Error(errorMessage);
             }
         } catch (error) {
             console.error('파일 업로드 실패:', error);
-            throw new Error('파일 업로드 중 오류가 발생했습니다.');
+            // 에러 메시지를 그대로 전달
+            const errorMsg = error.message || '파일 업로드 중 오류가 발생했습니다.';
+            throw new Error(errorMsg);
         }
     };
 
@@ -289,6 +317,33 @@ const Dashboard = () => {
         }
     };
 
+    const handlePresentationDelete = async (presentationId) => {
+        try {
+            const result = await topicService.deletePresentation(presentationId);
+            if (result.success) {
+                setShowDeleteSelector(false);
+                setSuccess('발표가 삭제되었습니다. 새로운 발표를 업로드합니다...');
+                
+                // 삭제 후 대기 중인 파일 업로드 진행
+                if (pendingUploadData) {
+                    setTimeout(async () => {
+                        try {
+                            await handleFileUpload(pendingUploadData);
+                            setPendingUploadData(null);
+                            setExistingPresentations([]);
+                        } catch (error) {
+                            setError(error.message);
+                        }
+                    }, 500);
+                }
+            } else {
+                throw new Error(result.error || '발표 삭제에 실패했습니다.');
+            }
+        } catch (error) {
+            setError(error.message || '발표 삭제 중 오류가 발생했습니다.');
+        }
+    };
+
     useEffect(() => {
         if (currentStream && videoRef.current) {
             videoRef.current.srcObject = currentStream;
@@ -320,15 +375,17 @@ const Dashboard = () => {
             {currentTopic && (
                 <div style={{
                     position: 'absolute',
-                    left: isSidebarCollapsed ? 362 : 565,
+                    left: isSidebarCollapsed ? '50%' : 565,
                     top: 80,
+                    transform: isSidebarCollapsed ? 'translateX(-50%)' : 'none',
                     backgroundColor: '#e3f2fd',
                     padding: '8px 16px',
                     borderRadius: '8px',
                     fontSize: '14px',
                     fontWeight: '600',
                     color: '#1976d2',
-                    transition: 'left 0.3s ease-in-out'
+                    transition: 'all 0.3s ease-in-out',
+                    zIndex: 1
                 }}>
                     📁 {currentTopic.title}
                 </div>
@@ -338,12 +395,13 @@ const Dashboard = () => {
             <div style={{
                 width: 800, 
                 height: 600, 
-                left: isSidebarCollapsed ? 362 : 565, 
+                left: isSidebarCollapsed ? '50%' : 565, 
                 top: 120, // Adjusted for smaller navbar height (70px + margin)
                 position: 'absolute', 
+                transform: isSidebarCollapsed ? 'translateX(-50%)' : 'none',
                 background: '#000000', 
                 borderRadius: 20,
-                transition: 'left 0.3s ease-in-out',
+                transition: 'all 0.3s ease-in-out',
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
@@ -486,9 +544,10 @@ const Dashboard = () => {
                     width: 91, 
                     height: 45, 
                     padding: 12, 
-                    left: isSidebarCollapsed ? (362 + 800 - 91 - 85 - 20) : (565 + 800 - 91 - 85 - 20), 
+                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20), 
                     top: 740,
                     position: 'absolute', 
+                    transform: isSidebarCollapsed ? 'translateX(calc(-50% - 50px))' : 'none',
                     background: '#2C2C2C', 
                     overflow: 'hidden', 
                     borderRadius: 15, 
@@ -532,9 +591,10 @@ const Dashboard = () => {
                     width: 85, 
                     height: 45, 
                     padding: 12, 
-                    left: isSidebarCollapsed ? (362 + 800 - 85 - 10) : (565 + 800 - 85 - 10), 
+                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 85 - 10), 
                     top: 740,
                     position: 'absolute', 
+                    transform: isSidebarCollapsed ? 'translateX(calc(-50% + 50px))' : 'none',
                     background: isRecording ? '#000000' : '#EC221F', 
                     overflow: 'hidden', 
                     borderRadius: 15, 
@@ -583,9 +643,10 @@ const Dashboard = () => {
                         width: 85, 
                         height: 45, 
                         padding: 12, 
-                        left: isSidebarCollapsed ? (362 + 800 - 91 - 85 - 20 - 85 - 20) : (565 + 800 - 91 - 85 - 20 - 85 - 20), 
+                        left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20 - 85 - 20), 
                         top: 740,
                         position: 'absolute', 
+                        transform: isSidebarCollapsed ? 'translateX(calc(-50% - 150px))' : 'none',
                         background: '#666666', 
                         overflow: 'hidden', 
                         borderRadius: 15, 
@@ -622,6 +683,7 @@ const Dashboard = () => {
                     </div>
                 </div>
             )}
+
 
             {/* 토픽 선택 모달 */}
             {showTopicSelector && (
@@ -767,6 +829,148 @@ const Dashboard = () => {
                 </div>
             )}
 
+            {/* Presentation Delete Selector Modal */}
+            {showDeleteSelector && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 10000
+                }}>
+                    <div style={{
+                        width: '90%',
+                        maxWidth: '600px',
+                        backgroundColor: '#ffffff',
+                        borderRadius: '16px',
+                        padding: '30px',
+                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                        maxHeight: '80vh',
+                        overflowY: 'auto'
+                    }}>
+                        <h2 style={{
+                            fontSize: '22px',
+                            fontWeight: '700',
+                            color: '#000000',
+                            margin: '0 0 10px 0',
+                            fontFamily: 'Inter, sans-serif'
+                        }}>
+                            ⚠️ 토픽에 발표가 가득 찼습니다
+                        </h2>
+                        <p style={{
+                            fontSize: '15px',
+                            color: '#666666',
+                            margin: '0 0 25px 0',
+                            fontFamily: 'Inter, sans-serif'
+                        }}>
+                            이 토픽에는 이미 2개의 발표가 있습니다. 새로운 발표를 추가하려면 기존 발표 중 하나를 삭제해주세요.
+                        </p>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <h3 style={{
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                color: '#000000',
+                                margin: '0 0 15px 0',
+                                fontFamily: 'Inter, sans-serif'
+                            }}>
+                                삭제할 발표를 선택하세요:
+                            </h3>
+
+                            {existingPresentations.map((presentation, index) => (
+                                <div
+                                    key={presentation.id}
+                                    onClick={() => handlePresentationDelete(presentation.id)}
+                                    style={{
+                                        padding: '15px',
+                                        border: '2px solid #e0e0e0',
+                                        borderRadius: '12px',
+                                        marginBottom: '12px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        backgroundColor: '#ffffff'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#fff3f3';
+                                        e.currentTarget.style.borderColor = '#dc3545';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#ffffff';
+                                        e.currentTarget.style.borderColor = '#e0e0e0';
+                                    }}
+                                >
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px'
+                                    }}>
+                                        <div style={{
+                                            fontSize: '24px',
+                                            flexShrink: 0
+                                        }}>
+                                            🗑️
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{
+                                                fontSize: '15px',
+                                                fontWeight: '600',
+                                                color: '#000000',
+                                                marginBottom: '4px'
+                                            }}>
+                                                {presentation.title}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '13px',
+                                                color: '#666666'
+                                            }}>
+                                                {new Date(presentation.createdAt).toLocaleString('ko-KR')}
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            fontSize: '13px',
+                                            color: '#dc3545',
+                                            fontWeight: '600',
+                                            padding: '6px 12px',
+                                            backgroundColor: '#ffe0e0',
+                                            borderRadius: '6px'
+                                        }}>
+                                            삭제
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setShowDeleteSelector(false);
+                                setPendingUploadData(null);
+                                setExistingPresentations([]);
+                            }}
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                backgroundColor: '#6c757d',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                fontFamily: 'Inter, sans-serif'
+                            }}
+                        >
+                            취소
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Video Uploader Modal */}
             {showUploader && (
                 <VideoUploader
@@ -779,6 +983,9 @@ const Dashboard = () => {
                     presentationId={null}
                     onAnalysisComplete={handleAnalysisComplete}
                     initialVideoBlob={videoFiles.length > 0 ? videoFiles[0].blob : null}
+                    currentTopic={currentTopic}
+                    topics={topics}
+                    onTopicSelect={handleTopicSelect}
                 />
             )}
             

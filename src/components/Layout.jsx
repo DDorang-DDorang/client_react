@@ -12,12 +12,13 @@ const Layout = ({ children }) => {
   // 대시보드 페이지에서는 사이드바를 표시하지 않음 (이미 자체적으로 관리)
   const isDashboardPage = location.pathname === '/dashboard';
   const isVideoAnalysisPage = location.pathname.startsWith('/video-analysis/');
+  const isComparisonPage = location.pathname === '/comparison';
   
   // 로그인하지 않은 상태이거나 특정 페이지에서는 사이드바를 표시하지 않음
-  const shouldShowSidebar = isAuthenticated && !isDashboardPage && !isVideoAnalysisPage;
+  const shouldShowSidebar = isAuthenticated && !isDashboardPage && !isVideoAnalysisPage && !isComparisonPage;
 
-  // 대시보드나 비디오 분석 페이지는 레이아웃을 우회
-  if (isDashboardPage || isVideoAnalysisPage) {
+  // 대시보드, 비디오 분석, 비교 페이지는 레이아웃을 우회
+  if (isDashboardPage || isVideoAnalysisPage || isComparisonPage) {
     return children;
   }
 
