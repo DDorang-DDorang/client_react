@@ -34,7 +34,6 @@ const PresentationManager = ({
     const [mode, setMode] = useState('view'); // 'view', 'edit', 'delete'
     const [formData, setFormData] = useState({
         title: presentation?.title || '',
-        script: presentation?.script || '',
         goalTime: presentation?.goalTime || ''
     });
     const [loading, setLoading] = useState(false);
@@ -45,7 +44,6 @@ const PresentationManager = ({
         if (presentation) {
             setFormData({
                 title: presentation.title || '',
-                script: presentation.script || '',
                 goalTime: presentation.goalTime || ''
             });
             setMode('view');
@@ -67,7 +65,6 @@ const PresentationManager = ({
         setMode('view');
         setFormData({
             title: presentation?.title || '',
-            script: presentation?.script || '',
             goalTime: presentation?.goalTime || ''
         });
         setError('');
@@ -297,19 +294,6 @@ const PresentationManager = ({
                                 variant="outlined"
                                 margin="normal"
                                 disabled={loading}
-                            />
-                            
-                            <TextField
-                                fullWidth
-                                label="스크립트"
-                                value={formData.script}
-                                onChange={handleInputChange('script')}
-                                variant="outlined"
-                                margin="normal"
-                                multiline
-                                rows={4}
-                                disabled={loading}
-                                helperText="프레젠테이션에서 말할 내용을 입력하세요."
                             />
                         </Box>
                     )}

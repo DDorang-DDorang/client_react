@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import topicService from '../api/topicService';
@@ -48,6 +48,7 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     const presentations = useSelector(state => state.topic.presentations);
     const currentTopic = useSelector(state => state.topic.currentTopic);
     const { teams = [] } = useSelector(state => state.team);
+    const { notifications } = useSelector(state => state.notification);
 
     // 개인 토픽 필터링
     const privateTopics = Array.isArray(topics) ? topics.filter(topic => !topic.isTeamTopic) : [];
@@ -95,6 +96,44 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             });
         }
     }, [refreshKey]);
+
+    // 알림이 새로 오면 프레젠테이션 목록 새로고침
+    const lastNotificationRef = useRef(null);
+    useEffect(() => {
+        if (notifications && notifications.length > 0) {
+            const latestNotification = notifications[0];
+            const latestId = latestNotification.notificationId || latestNotification.id;
+            
+            // 새 알림인지 확인
+            if (lastNotificationRef.current !== latestId) {
+                console.log('🔔 새 알림 감지 - 프레젠테이션 목록 새로고침');
+                // 초기 로드가 아니면 새로고침
+                if (lastNotificationRef.current !== null) {
+                    topics.forEach(topic => {
+                        loadPresentations(topic.id);
+                    });
+                }
+                lastNotificationRef.current = latestId;
+            }
+        }
+    }, [notifications]); // notifications 배열 변경 감지
+
+    // 주기적으로 프레젠테이션 목록 새로고침 (분석 상태 업데이트)
+    useEffect(() => {
+        if (!user) return;
+
+        const refreshPresentations = () => {
+            console.log('🔄 주기적으로 프레젠테이션 목록 새로고침');
+            topics.forEach(topic => {
+                loadPresentations(topic.id);
+            });
+        };
+
+        // 20초마다 새로고침
+        const interval = setInterval(refreshPresentations, 20000);
+
+        return () => clearInterval(interval);
+    }, [user, topics.length]); // topics.length 변경 시 재설정
 
     const loadTopics = async () => {
         if (!user || !(user.userId || user.id || user.email)) {
@@ -301,30 +340,28 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     };
 
     const handleTopicClick = async (topic) => {
-        // 토픽을 클릭하면 항상 확장되도록 수정
+        // 토픽을 클릭하면 확장/축소 토글
         const newExpandedTopics = new Set(expandedTopics);
-        newExpandedTopics.add(topic.id);
-        setExpandedTopics(newExpandedTopics);
+        if (newExpandedTopics.has(topic.id)) {
+            // 이미 확장되어 있으면 축소
+            newExpandedTopics.delete(topic.id);
+            setExpandedTopics(newExpandedTopics);
+        } else {
+            // 확장되어 있지 않으면 확장
+            newExpandedTopics.add(topic.id);
+            setExpandedTopics(newExpandedTopics);
+        }
         
         // 현재 토픽 설정
         dispatch(setCurrentTopic(topic));
         
-        // 팀 토픽인 경우 프레젠테이션 목록을 로드하지 않고 바로 Dashboard로 이동
-        if (topic.isTeamTopic) {
-            navigate('/dashboard', { 
-                state: { 
-                    selectedTopic: topic,
-                    action: 'create'
-                } 
-            });
-            return;
-        }
-        
-        // 개인 토픽인 경우 프레젠테이션 목록 로드
-        try {
-            await loadPresentations(topic.id);
-        } catch (error) {
-            console.error('프레젠테이션 로드 실패:', error);
+        // 개인 토픽이든 팀 토픽이든 프레젠테이션 목록 로드 (축소하지 않는 경우에만)
+        if (newExpandedTopics.has(topic.id)) {
+            try {
+                await loadPresentations(topic.id);
+            } catch (error) {
+                console.error('프레젠테이션 로드 실패:', error);
+            }
         }
     };
 

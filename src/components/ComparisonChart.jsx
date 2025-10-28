@@ -124,7 +124,7 @@ const ComparisonChart = ({ comparisonData, presentation1, presentation2 }) => {
             return '감정 분석 대기중';
         }
         
-        return `긍정: ${positive}% | 중립: ${neutral}% | 부정: ${negative}%`;
+        return `긍정: ${positive.toFixed(1)}% | 중립: ${neutral.toFixed(1)}% | 부정: ${negative.toFixed(1)}%`;
     };
 
     // 각 메트릭의 등급 계산 (DB에서 가져온 등급 그대로 사용)

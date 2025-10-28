@@ -68,6 +68,18 @@ const gradeToScore = (grade) => {
     return gradeScores[grade] || 75;
 };
 
+// 점수를 등급으로 변환하는 함수
+const calculateGradeFromScore = (score) => {
+    if (typeof score === 'string') return score;
+    
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    if (score >= 50) return 'E';
+    return 'F';
+};
+
 // 점수 계산 함수
 const calculateScore = (grade) => {
     return gradeToScore(grade);
@@ -99,6 +111,9 @@ const VideoAnalysis = () => {
     // 대본 관련 상태
     const [transcriptText, setTranscriptText] = useState('');
     const [editedTranscript, setEditedTranscript] = useState('');
+    
+    // 메인 비디오 ref 추가
+    const mainVideoRef = React.useRef(null);
 
     // 인증 검증 활성화 (토큰 만료 시 로그인으로 리다이렉트)
     useAuthValidation();
@@ -130,9 +145,9 @@ const VideoAnalysis = () => {
 
     // 비디오 시간 이동 핸들러
     const handleSeekToTime = (time) => {
-        const videoElement = document.querySelector('video');
-        if (videoElement) {
-            videoElement.currentTime = time;
+        // 메인 비디오 ref를 사용하여 특정 비디오만 제어
+        if (mainVideoRef.current) {
+            mainVideoRef.current.currentTime = time;
             setCurrentVideoTime(time);
         }
     };
@@ -369,6 +384,7 @@ const VideoAnalysis = () => {
                 text: voiceAnalysisData.pitchText || '피치 변화가 자연스럽습니다.'
             },
             clarity: {
+                grade: scores.clarity,
                 score: scores.clarity,
                 text: sttResult?.pronunciationScore ? 
                     `발음 정확도: ${(sttResult.pronunciationScore * 100).toFixed(1)}%` : 
@@ -417,9 +433,10 @@ const VideoAnalysis = () => {
                 pitch: {
                 grade: 'C',
                 score: scores.pitch,
-                text: '피치 분석이 완료되지 않았습니다.',
+                    text: '피치 분석이 완료되지 않았습니다.',
                 },
                 clarity: {
+                grade: scores.clarity,
                 score: scores.clarity,
                 text: sttResult.pronunciationScore ? 
                     `발음 정확도: ${(sttResult.pronunciationScore * 100).toFixed(1)}%` : 
@@ -474,12 +491,12 @@ const VideoAnalysis = () => {
 
     const calculatePronunciationScore = (data) => {
         if (!data || !data.pronunciationScore) return 'C';
-        // 발음 점수는 0-1 범위이므로 ABCDE로 변환
+        // 발음 점수는 0-1 범위이므로 A-E 등급으로 변환
         const score = data.pronunciationScore;
-        if (score >= 0.8) return 'A';
-        if (score >= 0.6) return 'B';
-        if (score >= 0.4) return 'C';
-        if (score >= 0.2) return 'D';
+        if (score >= 0.85) return 'A';
+        if (score >= 0.75) return 'B';
+        if (score >= 0.65) return 'C';
+        if (score >= 0.55) return 'D';
         return 'E';
     };
 
@@ -1093,6 +1110,7 @@ const VideoAnalysis = () => {
                         }}>
                             {videoData && (videoData.videoUrl || videoData.url) ? (
                                 <video
+                                    ref={mainVideoRef}
                                     controls
                                     src={videoData.videoUrl || videoData.url}
                                     style={{

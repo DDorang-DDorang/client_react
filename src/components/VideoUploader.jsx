@@ -152,144 +152,8 @@ const VideoUploader = ({
       clearInterval(progressInterval);
       setUploadProgress(100);
       
-      // 분석 기능이 활성화되고 업로드 결과가 있으면 자동으로 비동기 분석 시작
-      if (enableAnalysis && uploadResult && uploadResult.id) {
-        setIsAnalyzing(true);
-        setSuccess('비디오 업로드 완료! 분석을 시작합니다...');
-        
-        // 청크 업로드 시뮬레이션 (50MB 이상인 경우)
-        const fileSize = (selectedFile || videoBlob)?.size || 0;
-        const maxSize = 50 * 1024 * 1024; // 50MB
-        
-        if (fileSize > maxSize) {
-          const totalChunks = Math.ceil(fileSize / maxSize);
-          setChunkProgress({ current: 0, total: totalChunks });
-          
-          // 청크 업로드 시뮬레이션
-          for (let i = 0; i < totalChunks; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
-            setChunkProgress({ current: i + 1, total: totalChunks });
-            setSuccess(`청크 업로드 중... ${i + 1}/${totalChunks}`);
-          }
-          
-          setSuccess('모든 청크 업로드 완료! 분석을 시작합니다...');
-        }
-        
-        try {
-          // 비동기 분석 시작
-          const startResult = await videoAnalysisService.startAsyncVideoAnalysis(
-            uploadResult.id, 
-            selectedFile || videoBlob
-          );
-          
-          if (startResult.success) {
-            const { jobId } = startResult.data;
-            
-            // 분석 진행 상태 폴링
-            try {
-              const analysisResult = await videoAnalysisService.pollAnalysisResult(
-                jobId,
-                (progress) => {
-                  // 진행 상태 업데이트
-                  if (progress.status === 'processing') {
-                    setSuccess(`분석 중... ${progress.message || '잠시만 기다려주세요'}`);
-                  }
-                }
-              );
-          
-          if (analysisResult.success) {
-            setSuccess('비디오 업로드 및 분석이 완료되었습니다!');
-                setChunkProgress({ current: 0, total: 0 }); // 청크 진행률 초기화
-            
-            if (onAnalysisComplete) {
-              // 분석 데이터 구조 통일
-              const actualAnalysisData = {
-                    ...analysisResult.data,
-                // 비디오 URL 추가
-                videoUrl: uploadResult.videoUrl || uploadResult.url || URL.createObjectURL(selectedFile || videoBlob)
-              };
-              
-              onClose();
-              
-              setTimeout(() => {
-                const callbackData = {
-                  presentationId: uploadResult.id,
-                  presentationData: {
-                    ...uploadResult,
-                    videoUrl: actualAnalysisData.videoUrl
-                  },
-                  analysisData: actualAnalysisData
-                };
-                onAnalysisComplete(callbackData);
-              }, 100);
-                }
-              }
-            } catch (pollingError) {
-              console.error('분석 폴링 오류:', pollingError);
-              setError(`분석 실패: ${pollingError.message}`);
-              setChunkProgress({ current: 0, total: 0 }); // 청크 진행률 초기화
-              
-              if (onAnalysisComplete) {
-                onClose();
-                
-                setTimeout(() => {
-                  const callbackData = {
-                    presentationId: uploadResult.id,
-                    presentationData: {
-                      ...uploadResult,
-                      videoUrl: URL.createObjectURL(selectedFile || videoBlob)
-                    },
-                    analysisError: pollingError.message
-                  };
-                  onAnalysisComplete(callbackData);
-                }, 100);
-              }
-            }
-          } else {
-            setError(`분석 시작 실패: ${startResult.error}`);
-            
-            if (onAnalysisComplete) {
-              onClose();
-              
-              setTimeout(() => {
-                const callbackData = {
-                  presentationId: uploadResult.id,
-                  presentationData: {
-                    ...uploadResult,
-                    videoUrl: URL.createObjectURL(selectedFile || videoBlob)
-                  },
-                  analysisError: startResult.error
-                };
-                onAnalysisComplete(callbackData);
-              }, 100);
-            }
-          }
-        } catch (analysisError) {
-          console.error('분석 오류:', analysisError);
-          setError('분석 중 오류가 발생했습니다.');
-          setChunkProgress({ current: 0, total: 0 }); // 청크 진행률 초기화
-          
-          if (onAnalysisComplete) {
-            onClose();
-            
-            setTimeout(() => {
-              const callbackData = {
-                presentationId: uploadResult.id,
-                presentationData: {
-                  ...uploadResult,
-                  videoUrl: URL.createObjectURL(selectedFile || videoBlob)
-                },
-                analysisError: '분석 중 오류가 발생했습니다.'
-              };
-              onAnalysisComplete(callbackData);
-            }, 100);
-          }
-        } finally {
-          setIsAnalyzing(false);
-        }
-      } else {
-        setSuccess('비디오 업로드가 완료되었습니다!');
-      }
+      // 백엔드에서 자동으로 분석을 시작하므로, 프론트엔드는 분석 완료를 기다리지 않음
+      setSuccess('비디오 업로드가 완료되었습니다! 백그라운드에서 분석이 진행됩니다.');
       
       // 성공 후 초기화
       setSelectedFile(null);
@@ -301,6 +165,13 @@ const VideoUploader = ({
       });
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      
+      // 모달 닫기
+      if (onClose) {
+        setTimeout(() => {
+          onClose();
+        }, 2000); // 2초 후 자동 닫기
       }
       
     } catch (err) {

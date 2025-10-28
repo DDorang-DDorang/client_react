@@ -126,7 +126,7 @@ const settingsService = {
      */
     async getCurrentUser() {
         try {
-            const response = await api.get('/api/user/profile');
+            const response = await api.get('/api/auth/me');
             return {
                 success: true,
                 data: response.data

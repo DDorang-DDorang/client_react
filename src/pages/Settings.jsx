@@ -419,7 +419,7 @@ const Settings = () => {
                                     label="알림 받기"
                                 />
                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                    분석 완료, 팀 초대 등의 알림을 받습니다.
+                                    분석 완료 등의 알림을 받습니다.
                                 </Typography>
                             </CardContent>
                         </Card>

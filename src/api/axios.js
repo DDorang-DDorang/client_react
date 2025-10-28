@@ -70,7 +70,7 @@ api.interceptors.response.use(
             try {
                 console.log('401 error detected, attempting token refresh...');
                 
-                // 현재 JWT 토큰에서 이메일 추출
+                // 현재 JWT 토큰에서 이메일과 provider 추출
                 const currentToken = localStorage.getItem('token');
                 if (!currentToken) {
                     throw new Error('No access token found');
@@ -83,12 +83,35 @@ api.interceptors.response.use(
                 
                 const payload = JSON.parse(atob(parts[1]));
                 const email = payload.sub || payload.email;
+                const provider = payload.provider || 'LOCAL';
                 
                 if (!email) {
                     throw new Error('No email found in token');
                 }
                 
-                // 이메일로 토큰 갱신 요청
+                // Google OAuth 토큰의 경우 백엔드 refresh API 사용
+                if (provider === 'GOOGLE') {
+                    console.log('Google OAuth 토큰 - 백엔드 갱신 API 호출');
+                    try {
+                        const refreshResponse = await axios.post(`${API_URL}/api/oauth2/refresh`, null, {
+                            params: { email },
+                            timeout: 10000
+                        });
+                        
+                        if (refreshResponse.data && refreshResponse.data.accessToken) {
+                            localStorage.setItem('token', refreshResponse.data.accessToken);
+                            originalRequest.headers.Authorization = `Bearer ${refreshResponse.data.accessToken}`;
+                            return api(originalRequest);
+                        } else {
+                            throw new Error('No access token in response');
+                        }
+                    } catch (refreshError) {
+                        console.error('Google OAuth 토큰 갱신 실패:', refreshError);
+                        throw refreshError;
+                    }
+                }
+                
+                // 이메일로 토큰 갱신 요청 (LOCAL 토큰만)
                 const refreshResponse = await axios.post(`${API_URL}/api/auth/token/refresh`, null, {
                     params: { email },
                     timeout: 10000
@@ -106,6 +129,25 @@ api.interceptors.response.use(
                 }
             } catch (refreshError) {
                 console.error('Token refresh failed:', refreshError);
+                
+                // Google OAuth 토큰의 경우 로그아웃하지 않음
+                const currentToken = localStorage.getItem('token');
+                if (currentToken) {
+                    try {
+                        const parts = currentToken.split('.');
+                        if (parts.length === 3) {
+                            const payload = JSON.parse(atob(parts[1]));
+                            const provider = payload.provider || 'LOCAL';
+                            
+                            if (provider === 'GOOGLE') {
+                                console.log('Google OAuth 토큰 - 401 에러 발생하지만 로그아웃하지 않음');
+                                return Promise.reject(error);
+                            }
+                        }
+                    } catch (e) {
+                        // 무시
+                    }
+                }
                 
                 // 토큰 갱신 실패 시 액세스 토큰 제거
                 localStorage.removeItem('token');

@@ -138,7 +138,7 @@ const authService = {
 
             // Google OAuth 토큰이거나 JWT에서 정보를 얻지 못한 경우 백엔드 API 호출
             try {
-                const response = await api.get('/auth/me');
+                const response = await api.get('/api/auth/me');
                 
                 if (response.data) {
                     const userData = {
@@ -433,6 +433,24 @@ const authService = {
         }
     },
 
+    // Get token provider (LOCAL or GOOGLE)
+    getTokenProvider: () => {
+        const token = localStorage.getItem('token');
+        if (!token) return null;
+        
+        try {
+            const parts = token.split('.');
+            if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1]));
+                return payload.provider || 'LOCAL';
+            }
+        } catch (e) {
+            console.log('토큰 파싱 실패:', e);
+        }
+        
+        return null;
+    },
+
     // Refresh access token using email (refresh token stored in Redis)
     refreshToken: async () => {
         try {
@@ -449,12 +467,22 @@ const authService = {
 
             const payload = JSON.parse(atob(parts[1]));
             const email = payload.sub || payload.email;
+            const provider = payload.provider || 'LOCAL';
             
             if (!email) {
                 throw new Error('No email found in token');
             }
 
-            // 이메일로 서버에 토큰 재발급 요청
+            // Google OAuth 토큰은 백엔드에서 자동 갱신되므로 프론트엔드에서 갱신하지 않음
+            if (provider === 'GOOGLE') {
+                console.log('Google OAuth 토큰 - 서버에서 자동 갱신됨');
+                return {
+                    success: true,
+                    accessToken: token // 기존 토큰 유지
+                };
+            }
+
+            // LOCAL 로그인 토큰만 갱신
             const response = await api.post(API_ROUTES.AUTH.TOKEN_REFRESH, null, {
                 params: { email },
                 timeout: 10000
@@ -472,6 +500,16 @@ const authService = {
             }
         } catch (error) {
             console.error('Token refresh failed:', error);
+            
+            // Google OAuth 토큰의 경우 갱신 실패해도 로그아웃하지 않음
+            const provider = authService.getTokenProvider();
+            if (provider === 'GOOGLE') {
+                console.log('Google OAuth 토큰 갱신 실패 - 무시됨');
+                return {
+                    success: true,
+                    accessToken: localStorage.getItem('token')
+                };
+            }
             
             if (error.code === 'ERR_NETWORK' || 
                 error.message === 'Network Error' ||
