@@ -17,6 +17,7 @@ const Dashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const user = useSelector(state => state.auth.user);
+    const isAuthenticated = useSelector(state => state.auth.isAuthenticated);
     const topics = useSelector(state => state.topic.topics);
     const currentTopic = useSelector(state => state.topic.currentTopic);
     const dispatch = useDispatch();
@@ -365,11 +366,13 @@ const Dashboard = () => {
                 showSidebarToggle={true}
             />
 
-            {/* Collapsible Sidebar */}
-            <CollapsibleSidebar 
-                isCollapsed={isSidebarCollapsed}
-                refreshKey={refreshSidebarKey}
-            />
+            {/* Collapsible Sidebar - 인증된 경우에만 렌더링 */}
+            {isAuthenticated && (
+                <CollapsibleSidebar
+                    isCollapsed={isSidebarCollapsed}
+                    refreshKey={refreshSidebarKey}
+                />
+            )}
 
             {/* 현재 선택된 토픽 표시 - 카메라 창 왼쪽 정렬 */}
             {currentTopic && (

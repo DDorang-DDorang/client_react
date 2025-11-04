@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Navbar from './Navbar';
 import CollapsibleSidebar from './CollapsibleSidebar';
 
 const Layout = ({ children }) => {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
   const location = useLocation();
   const { isAuthenticated } = useSelector(state => state.auth);
 
@@ -17,13 +20,23 @@ const Layout = ({ children }) => {
   // 로그인하지 않은 상태이거나 특정 페이지에서는 사이드바를 표시하지 않음
   const shouldShowSidebar = isAuthenticated && !isDashboardPage && !isVideoAnalysisPage && !isComparisonPage;
 
+  // 페이지 이동 시 localStorage에서 사이드바 상태 동기화
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved !== null) {
+      setIsSidebarCollapsed(JSON.parse(saved));
+    }
+  }, [location.pathname]);
+
   // 대시보드, 비디오 분석, 비교 페이지는 레이아웃을 우회
   if (isDashboardPage || isVideoAnalysisPage || isComparisonPage) {
     return children;
   }
 
   const toggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
+    const newState = !isSidebarCollapsed;
+    setIsSidebarCollapsed(newState);
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(newState));
   };
 
   // 사이드바 상태에 따른 메인 콘텐츠 여백 계산
