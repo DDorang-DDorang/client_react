@@ -371,13 +371,13 @@ const Dashboard = () => {
                 refreshKey={refreshSidebarKey}
             />
 
-            {/* 현재 선택된 토픽 표시 */}
+            {/* 현재 선택된 토픽 표시 - 카메라 창 왼쪽 정렬 */}
             {currentTopic && (
                 <div style={{
                     position: 'absolute',
                     left: isSidebarCollapsed ? '50%' : 565,
                     top: 80,
-                    transform: isSidebarCollapsed ? 'translateX(-50%)' : 'none',
+                    transform: isSidebarCollapsed ? 'translateX(-400px)' : 'none', // 카메라 창 너비의 절반만큼 왼쪽
                     backgroundColor: '#e3f2fd',
                     padding: '8px 16px',
                     borderRadius: '8px',
@@ -541,21 +541,21 @@ const Dashboard = () => {
                     }
                 }}
                 style={{
-                    width: 91, 
-                    height: 45, 
-                    padding: 12, 
-                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20), 
+                    width: 91,
+                    height: 45,
+                    padding: 12,
+                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20),
                     top: 740,
-                    position: 'absolute', 
-                    transform: isSidebarCollapsed ? 'translateX(calc(-50% - 50px))' : 'none',
-                    background: '#2C2C2C', 
-                    overflow: 'hidden', 
-                    borderRadius: 15, 
-                    outline: '1px #2C2C2C solid', 
-                    outlineOffset: '-1px', 
-                    justifyContent: 'center', 
-                    alignItems: 'center', 
-                    gap: 8, 
+                    position: 'absolute',
+                    transform: isSidebarCollapsed ? 'translateX(calc(400px - 91px - 85px - 20px))' : 'none', // 카메라 창 오른쪽 정렬
+                    background: '#2C2C2C',
+                    overflow: 'hidden',
+                    borderRadius: 15,
+                    outline: '1px #2C2C2C solid',
+                    outlineOffset: '-1px',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 8,
                     display: 'inline-flex',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease-in-out',
@@ -577,10 +577,10 @@ const Dashboard = () => {
                     fontSize: 16, 
                     fontFamily: 'Inter', 
                     fontWeight: '400', 
-                    lineHeight: 16, 
+                    lineHeight: 16,
                     wordWrap: 'break-word'
                 }}>
-                    Upload
+                    업로드
                 </div>
             </div>
 
@@ -588,21 +588,21 @@ const Dashboard = () => {
             <div 
                 onClick={isRecording ? stopRecording : startRecording}
                 style={{
-                    width: 85, 
-                    height: 45, 
-                    padding: 12, 
-                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 85 - 10), 
+                    width: 85,
+                    height: 45,
+                    padding: 12,
+                    left: isSidebarCollapsed ? '50%' : (565 + 800 - 85 - 10),
                     top: 740,
-                    position: 'absolute', 
-                    transform: isSidebarCollapsed ? 'translateX(calc(-50% + 50px))' : 'none',
-                    background: isRecording ? '#000000' : '#EC221F', 
-                    overflow: 'hidden', 
-                    borderRadius: 15, 
-                    outline: `1px ${isRecording ? '#000000' : '#EC221F'} solid`, 
-                    outlineOffset: '-1px', 
-                    justifyContent: 'center', 
-                    alignItems: 'center', 
-                    gap: 8, 
+                    position: 'absolute',
+                    transform: isSidebarCollapsed ? 'translateX(calc(400px - 85px - 10px))' : 'none', // 카메라 창 오른쪽 정렬
+                    background: isRecording ? '#000000' : '#EC221F',
+                    overflow: 'hidden',
+                    borderRadius: 15,
+                    outline: `1px ${isRecording ? '#000000' : '#EC221F'} solid`,
+                    outlineOffset: '-1px',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 8,
                     display: 'inline-flex',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease-in-out',
@@ -628,10 +628,10 @@ const Dashboard = () => {
                     fontSize: 16, 
                     fontFamily: 'Inter', 
                     fontWeight: '400', 
-                    lineHeight: 16, 
+                    lineHeight: 16,
                     wordWrap: 'break-word'
                 }}>
-                    {isRecording ? 'Stop' : 'Record'}
+                    {isRecording ? '정지' : '녹화'}
                 </div>
             </div>
 
@@ -640,21 +640,21 @@ const Dashboard = () => {
                 <div 
                     onClick={cancelRecording}
                     style={{
-                        width: 85, 
-                        height: 45, 
-                        padding: 12, 
-                        left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20 - 85 - 20), 
+                        width: 85,
+                        height: 45,
+                        padding: 12,
+                        left: isSidebarCollapsed ? '50%' : (565 + 800 - 91 - 85 - 20 - 85 - 20),
                         top: 740,
-                        position: 'absolute', 
-                        transform: isSidebarCollapsed ? 'translateX(calc(-50% - 150px))' : 'none',
-                        background: '#666666', 
-                        overflow: 'hidden', 
-                        borderRadius: 15, 
-                        outline: '1px #666666 solid', 
-                        outlineOffset: '-1px', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        gap: 8, 
+                        position: 'absolute',
+                        transform: isSidebarCollapsed ? 'translateX(calc(400px - 91px - 85px - 20px - 85px - 20px))' : 'none', // 카메라 창 오른쪽 정렬
+                        background: '#666666',
+                        overflow: 'hidden',
+                        borderRadius: 15,
+                        outline: '1px #666666 solid',
+                        outlineOffset: '-1px',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: 8,
                         display: 'inline-flex',
                         cursor: 'pointer',
                         transition: 'all 0.3s ease-in-out',
@@ -676,10 +676,10 @@ const Dashboard = () => {
                         fontSize: 16, 
                         fontFamily: 'Inter', 
                         fontWeight: '400', 
-                        lineHeight: 16, 
+                        lineHeight: 16,
                         wordWrap: 'break-word'
                     }}>
-                        Cancel
+                        취소
                     </div>
                 </div>
             )}

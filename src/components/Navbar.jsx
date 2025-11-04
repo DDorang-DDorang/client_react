@@ -158,7 +158,7 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              <span>🏠</span>
+              <span></span>
               <span>대시보드</span>
             </div>
 
@@ -194,7 +194,7 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              <span>📊</span>
+              <span></span>
               <span>발표 비교</span>
             </div>
 
@@ -230,7 +230,7 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              <span>⚙️</span>
+              <span></span>
               <span>설정</span>
             </div>
 
@@ -266,7 +266,7 @@ const Navbar = ({ isCollapsed, onToggleSidebar, showSidebarToggle = false }) => 
                 e.target.style.transform = 'translateY(0)';
               }}
             >
-              <span>👥</span>
+              <span></span>
               <span>팀 관리</span>
             </div>
 

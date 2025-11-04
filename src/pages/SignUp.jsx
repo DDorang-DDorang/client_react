@@ -21,7 +21,7 @@ import theme from '../theme';
 import useAuthCheck from '../hooks/useAuthCheck';
 
 const PageContainer = styled(Container)({
-  minHeight: '100vh',
+  height: '100vh',
   minWidth: '100vw',
   width: '100vw',
   maxWidth: '100vw',
@@ -30,18 +30,21 @@ const PageContainer = styled(Container)({
   padding: 0,
   margin: 0,
   background: '#FFFFFF',
-  overflowX: 'hidden',
-  paddingTop: '80px',
+  overflow: 'hidden',
 });
 
 const ContentContainer = styled(Box)({
   flex: 1,
   display: 'flex',
   width: '100%',
-  minHeight: 'calc(100vh - 80px)', // Navbar 높이 제외
-  maxWidth: '1200px', // 전체 최대 너비 제한
-  margin: '0 auto', // 중앙 정렬
-  gap: '60px', // 좌우 섹션 간 간격 추가
+  height: '100vh',
+  maxWidth: '1200px',
+  margin: '0 auto',
+  gap: '60px',
+  overflow: 'hidden',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: '-70px', // Navbar 높이만큼 위로 올림
 });
 
 const LeftSection = styled(Box)({
@@ -175,6 +178,16 @@ const SignUp = () => {
   const [isSendingCode, setIsSendingCode] = useState(false);
 
   useAuthCheck('/dashboard');
+
+  // Prevent body scroll on this page
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = '100vh';
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
