@@ -1217,7 +1217,7 @@ const VideoAnalysis = () => {
                                 e.target.style.backgroundColor = '#9c27b0';
                             }}
                         >
-                            📊 발표 비교
+                             발표 비교
                         </button>
                         
                         <button
@@ -1242,7 +1242,7 @@ const VideoAnalysis = () => {
                                 e.target.style.backgroundColor = '#2C2C2C';
                             }}
                         >
-                            🏠 대시보드
+                             대시보드
                         </button>
                     </div>
                 </div>

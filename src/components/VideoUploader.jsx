@@ -81,15 +81,15 @@ const VideoUploader = ({
     try {
       // 비디오 파일 유효성 검사
       const validTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/webm', 'video/ogg'];
-      const maxSize = enableAnalysis ? 100 * 1024 * 1024 : 500 * 1024 * 1024; // 분석용은 100MB, 일반은 500MB
+      const maxSize = 4 * 1024 * 1024 * 1024; // 4GB
 
       if (!validTypes.includes(file.type)) {
         throw new Error('지원하는 비디오 형식: MP4, AVI, MOV, WMV, WebM, OGG');
       }
 
       if (file.size > maxSize) {
-        const maxSizeMB = maxSize / (1024 * 1024);
-        throw new Error(`파일 크기는 ${maxSizeMB}MB 이하여야 합니다.`);
+        const maxSizeGB = maxSize / (1024 * 1024 * 1024);
+        throw new Error(`파일 크기는 ${maxSizeGB}GB 이하여야 합니다.`);
       }
 
       setSelectedFile(file);
