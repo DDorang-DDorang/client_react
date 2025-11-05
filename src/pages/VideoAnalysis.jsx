@@ -1199,7 +1199,7 @@ const VideoAnalysis = () => {
                             onClick={() => navigate('/comparison')}
                             style={{
                                 padding: '12px 24px',
-                                backgroundColor: '#9c27b0',
+                                backgroundColor: '#1976d2',
                                 color: '#ffffff',
                                 border: 'none',
                                 borderRadius: '8px',
@@ -1211,10 +1211,10 @@ const VideoAnalysis = () => {
                                 flex: 1
                             }}
                             onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = '#7b1fa2';
+                                e.target.style.backgroundColor = '#1565c0';
                             }}
                             onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = '#9c27b0';
+                                e.target.style.backgroundColor = '#1976d2';
                             }}
                         >
                              발표 비교

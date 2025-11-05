@@ -26,8 +26,8 @@ const PentagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tr
     const colors = {
         background: '#f8f9fa',
         grid: '#e9ecef',
-        data: '#2C2C2C',
-        dataFill: 'rgba(44, 44, 44, 0.2)',
+        data: '#1976d2',
+        dataFill: 'rgba(25, 118, 210, 0.2)',
         text: '#000000',
         accent: '#4CAF50',
         warning: '#FF9800',
@@ -97,9 +97,11 @@ const PentagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tr
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw background
-        ctx.fillStyle = colors.background;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Draw background (미리보기 모드에서는 투명하게)
+        if (!isPreview) {
+            ctx.fillStyle = colors.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         // Helper function to get point on pentagon
         const getPentPoint = (index, radiusMultiplier = 1) => {
@@ -333,7 +335,7 @@ const PentagonChart = ({ data = {}, analysisDetails, size = 350, showLabels = tr
                     <canvas
                         ref={canvasRef}
                         width={size}
-                        height={size * 0.85}
+                        height={isPreview ? size * 0.65 : size * 0.85}
                         style={{
                             width: isPreview ? `${size}px` : '100%',
                             height: isPreview ? `${size * 0.85}px` : 'auto',

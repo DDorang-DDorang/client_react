@@ -1147,19 +1147,29 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                                                     <div style={{
                                                         width: '180px',
                                                         height: '180px',
+                                                        aspectRatio: '1',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        margin: '0 auto'
+                                                        margin: '0 auto',
+                                                        overflow: 'hidden'
                                                     }}>
                                                         {hasAnalysis ? (
-                                                            <PentagonChart
-                                                                data={analysisData.grades || analysisData.scores}
-                                                                size={180}
-                                                                showLabels={false}
-                                                                showGrid={false}
-                                                                isPreview={true}
-                                                            />
+                                                            <div style={{
+                                                                width: '180px',
+                                                                height: '180px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center'
+                                                            }}>
+                                                                <PentagonChart
+                                                                    data={analysisData.grades || analysisData.scores}
+                                                                    size={180}
+                                                                    showLabels={false}
+                                                                    showGrid={false}
+                                                                    isPreview={true}
+                                                                />
+                                                            </div>
                                                         ) : (
                                                             <div style={{
                                                                 fontSize: '16px',
