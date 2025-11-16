@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import CollapsibleSidebar from '../components/CollapsibleSidebar';
 import PentagonChart from '../components/PentagonChart';
 import CommentSection from '../components/CommentSection';
 import videoAnalysisService from '../api/videoAnalysisService';
+import topicService from '../api/topicService';
 import useAuthValidation from '../hooks/useAuthValidation';
 import { Box, Container, Typography, CircularProgress, Paper, Alert, Fab, Tooltip } from '@mui/material';
 import { Edit as EditIcon } from '@mui/icons-material';
 import useError from '../hooks/useError';
 import useLoading from '../hooks/useLoading';
 import theme from '../theme';
+import { getVideoUrl } from '../utils/videoUrlUtils';
 
 // 기본 분석 데이터
 const defaultAnalysisData = {
@@ -82,6 +84,9 @@ const VideoAnalysis = () => {
     
     // 메인 비디오 ref 추가
     const mainVideoRef = React.useRef(null);
+    const [videoLoading, setVideoLoading] = useState(false);
+    const [videoError, setVideoError] = useState(false);
+    const [videoShouldLoad, setVideoShouldLoad] = useState(false); // 사용자가 재생 버튼을 클릭할 때까지 로드하지 않음
 
     // 인증 검증 활성화 (토큰 만료 시 로그인으로 리다이렉트)
     useAuthValidation();
@@ -116,11 +121,26 @@ const VideoAnalysis = () => {
         }
     };
 
+    // presentationId 변경 시에만 데이터 로드 (location.state는 초기 로드 시에만 사용)
+    const locationStateRef = useRef(location.state);
+    const hasLoadedRef = useRef(false);
+
     useEffect(() => {
+        // presentationId가 변경되면 location.state도 업데이트
+        if (location.state && location.state !== locationStateRef.current) {
+            locationStateRef.current = location.state;
+        }
+    }, [location.state]);
+    
+    useEffect(() => {
+        // 이미 로드된 경우 중복 로드 방지
+        if (hasLoadedRef.current && presentationId === hasLoadedRef.current) {
+            return;
+        }
+        
         const loadData = async () => {
             // presentationId가 없으면 대시보드로 리다이렉트
             if (!presentationId) {
-                console.error('VideoAnalysis: presentationId가 없습니다');
                 setError('분석 결과를 찾을 수 없습니다. 대시보드로 이동합니다.');
                 setTimeout(() => {
                     navigate('/dashboard');
@@ -129,7 +149,7 @@ const VideoAnalysis = () => {
             }
 
         // React Router state 또는 localStorage에서 데이터 확인
-        let stateData = location.state;
+            let stateData = locationStateRef.current;
         
         if (!stateData) {
             try {
@@ -153,7 +173,6 @@ const VideoAnalysis = () => {
                     }
                 }
             } catch (e) {
-                console.warn('localStorage 읽기 실패:', e);
                 localStorage.removeItem('videoAnalysisState');
             }
         } else {
@@ -187,6 +206,7 @@ const VideoAnalysis = () => {
                 
                 // 캐시 무시하고 강제로 새로 로드 (pageData 전달)
                 await loadAnalysisResults(stateData);
+                    hasLoadedRef.current = presentationId;
                 return;
             }
             
@@ -195,17 +215,55 @@ const VideoAnalysis = () => {
                 // 기존 데이터가 FastAPI 형식이므로 Spring Boot 형식으로 변환
                 const processedData = convertSpringBootDataToDisplayFormat(stateData.analysisData);
                 setAnalysisData(processedData);
+                
+                // videoData가 없으면 프레젠테이션 정보를 가져오기
+                if (!videoData) {
+                    try {
+                        const presentationResult = await topicService.getPresentation(presentationId);
+                        if (presentationResult.success && presentationResult.data) {
+                            setVideoData(presentationResult.data);
+                            // 영상 URL이 있으면 즉시 로드
+                            if (presentationResult.data.videoUrl || presentationResult.data.url) {
+                                setVideoShouldLoad(true);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('프레젠테이션 정보 가져오기 실패:', error);
+                    }
+                }
+                
                 setLoading(false);
+                    hasLoadedRef.current = presentationId;
                 return;
             }
         }
         
         // 분석 데이터가 없으면 서버에서 로드
-        loadAnalysisResults();
+            await loadAnalysisResults();
+            hasLoadedRef.current = presentationId;
         };
         
         loadData();
-    }, [presentationId, location.state, navigate]);
+    }, [presentationId, navigate]);
+
+    // 비디오 데이터가 변경될 때 로딩 상태 초기화
+    // 분석 완료 후 자동 리다이렉트 시 영상을 바로 로드
+    useEffect(() => {
+        if (videoData && (videoData.videoUrl || videoData.url)) {
+            setVideoError(false);
+            // location.state가 있거나, 분석 완료 후 자동 리다이렉트인 경우 영상 바로 로드
+            if (location.state && location.state.presentationData) {
+                // 알림 클릭으로 이동한 경우
+                setVideoShouldLoad(true);
+            } else if (analysisData) {
+                // 분석 데이터가 이미 로드된 경우 (분석 완료 후 자동 리다이렉트)
+                // 영상 URL이 있으면 즉시 로드
+                setVideoShouldLoad(true);
+            }
+            // 그 외의 경우는 포스터부터 표시 (사용자가 클릭하면 로드)
+        }
+    }, [videoData, location.state, analysisData]);
+
 
     const loadAnalysisResults = async (passedPageData = null) => {
         try {
@@ -248,7 +306,25 @@ const VideoAnalysis = () => {
                 const currentPageData = passedPageData || pageData;
                 if (currentPageData?.presentationData) {
                     setVideoData(currentPageData.presentationData);
+                    // 분석 완료 후 자동 리다이렉트 시 영상 즉시 로드
+                    if (currentPageData.presentationData.videoUrl || currentPageData.presentationData.url) {
+                        setVideoShouldLoad(true);
+                    }
                 } else {
+                    // videoData가 없거나 업데이트가 필요한 경우 프레젠테이션 정보를 가져와서 설정
+                    // 분석 완료 후 자동 리다이렉트 시 videoData가 없을 수 있으므로 항상 확인
+                    try {
+                        const presentationResult = await topicService.getPresentation(presentationId);
+                        if (presentationResult.success && presentationResult.data) {
+                            setVideoData(presentationResult.data);
+                            // 프레젠테이션 정보를 가져온 경우에도 영상 URL이 있으면 즉시 로드
+                            if (presentationResult.data.videoUrl || presentationResult.data.url) {
+                                setVideoShouldLoad(true);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('프레젠테이션 정보 가져오기 실패:', error);
+                    }
                 }
             } else {
                 setAnalysisData(createDefaultAnalysisData());
@@ -905,13 +981,20 @@ const VideoAnalysis = () => {
     })();
 
     return (
-        <div style={{
-            width: '100%',
-            height: '100vh',
-            position: 'relative',
-            background: 'white',
-            overflow: 'hidden'
-        }}>
+        <>
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
+            <div style={{
+                width: '100%',
+                height: '100vh',
+                position: 'relative',
+                background: 'white',
+                overflow: 'hidden'
+            }}>
             {/* Navbar */}
             <Navbar 
                 isCollapsed={isSidebarCollapsed}
@@ -919,9 +1002,10 @@ const VideoAnalysis = () => {
                 showSidebarToggle={true}
             />
 
-            {/* Collapsible Sidebar */}
+            {/* Collapsible Sidebar - 분석 페이지에서는 최소한의 데이터만 로드 */}
             <CollapsibleSidebar 
                 isCollapsed={isSidebarCollapsed}
+                refreshKey={0}
             />
 
             {/* Main Content Area */}
@@ -980,30 +1064,190 @@ const VideoAnalysis = () => {
                         <div style={{
                             width: '100%',
                             height: isSidebarCollapsed ? '500px' : '400px',
+                            minHeight: isSidebarCollapsed ? '500px' : '400px',
                             backgroundColor: '#000000',
                             borderRadius: '12px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            position: 'relative'
+                            position: 'relative',
+                            overflow: 'hidden'
                         }}>
                             {videoData && (videoData.videoUrl || videoData.url) ? (
-                                <video
-                                    ref={mainVideoRef}
-                                    controls
-                                    src={(videoData.videoUrl || videoData.url) 
-                                        ? ((videoData.videoUrl || videoData.url).startsWith('http') 
-                                            ? (videoData.videoUrl || videoData.url)
-                                            : `${window.location.origin.includes('localhost') ? 'http://localhost:8080' : window.location.origin.replace(/:\d+$/, ':8080')}${videoData.videoUrl || videoData.url}`)
-                                        : undefined}
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        borderRadius: '12px',
-                                        objectFit: 'contain'
-                                    }}
-                                    onTimeUpdate={(e) => handleVideoTimeUpdate(e.target.currentTime)}
-                                />
+                                !videoShouldLoad ? (
+                                    // 비디오 로드 전 포스터 이미지 표시 (빠른 로딩)
+                                    <div 
+                                        onClick={() => setVideoShouldLoad(true)}
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            position: 'relative'
+                                        }}
+                                    >
+                                        {/* 비디오 썸네일 (첫 프레임) - 메타데이터만 로드하여 빠르게 표시 */}
+                                        <video
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '12px',
+                                                objectFit: 'contain',
+                                                pointerEvents: 'none'
+                                            }}
+                                            src={(videoData.videoUrl || videoData.url) ? getVideoUrl(videoData.videoUrl || videoData.url) : undefined}
+                                            preload="metadata"
+                                            muted
+                                            playsInline
+                                            onLoadedMetadata={(e) => {
+                                                // 첫 프레임(0.1초)으로 이동하여 썸네일 표시
+                                                try {
+                                                    e.target.currentTime = 0.1;
+                                                } catch (err) {
+                                                    // currentTime 설정 실패 시 무시
+                                                }
+                                            }}
+                                        />
+                                        {/* 재생 버튼 오버레이 */}
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '50%',
+                                            left: '50%',
+                                            transform: 'translate(-50%, -50%)',
+                                            width: '80px',
+                                            height: '80px',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.3s ease',
+                                            zIndex: 5
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+                                            e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                                            e.currentTarget.style.transform = 'translate(-50%, -50%) scale(1)';
+                                        }}
+                                        >
+                                            <div style={{
+                                                width: 0,
+                                                height: 0,
+                                                borderLeft: '25px solid #ffffff',
+                                                borderTop: '15px solid transparent',
+                                                borderBottom: '15px solid transparent',
+                                                marginLeft: '5px'
+                                            }}></div>
+                                        </div>
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: '20px',
+                                            left: '50%',
+                                            transform: 'translateX(-50%)',
+                                            color: '#ffffff',
+                                            fontSize: '14px',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                            padding: '8px 16px',
+                                            borderRadius: '20px',
+                                            zIndex: 5
+                                        }}>
+                                            클릭하여 재생
+                                        </div>
+                                    </div>
+                                ) : (
+                                    // 실제 비디오 로드 및 재생
+                                    <>
+                                        <video
+                                            ref={mainVideoRef}
+                                            controls
+                                            autoPlay
+                                            preload="metadata"
+                                            playsInline
+                                            src={(videoData.videoUrl || videoData.url) ? getVideoUrl(videoData.videoUrl || videoData.url) : undefined}
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '12px',
+                                                objectFit: 'contain',
+                                                opacity: videoLoading ? 0.3 : 1,
+                                                transition: 'opacity 0.3s ease',
+                                                position: 'relative',
+                                                zIndex: 1
+                                            }}
+                                            onTimeUpdate={(e) => handleVideoTimeUpdate(e.target.currentTime)}
+                                            onLoadedMetadata={() => {
+                                                setVideoLoading(false);
+                                                setVideoError(false);
+                                            }}
+                                            onCanPlay={() => {
+                                                setVideoLoading(false);
+                                            }}
+                                            onCanPlayThrough={() => {
+                                                setVideoLoading(false);
+                                            }}
+                                            onWaiting={() => {
+                                                setVideoLoading(true);
+                                            }}
+                                            onPlaying={() => {
+                                                setVideoLoading(false);
+                                            }}
+                                            onError={(e) => {
+                                                console.error('비디오 로드 오류:', e);
+                                                setVideoLoading(false);
+                                                setVideoError(true);
+                                            }}
+                                            onLoadStart={() => {
+                                                setVideoLoading(true);
+                                                setVideoError(false);
+                                            }}
+                                        />
+                                        {videoLoading && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '50%',
+                                                left: '50%',
+                                                transform: 'translate(-50%, -50%)',
+                                                color: '#ffffff',
+                                                textAlign: 'center',
+                                                zIndex: 10,
+                                                pointerEvents: 'none'
+                                            }}>
+                                                <div style={{
+                                                    width: '50px',
+                                                    height: '50px',
+                                                    border: '4px solid rgba(255, 255, 255, 0.3)',
+                                                    borderTopColor: '#ffffff',
+                                                    borderRadius: '50%',
+                                                    animation: 'spin 1s linear infinite',
+                                                    margin: '0 auto 16px'
+                                                }}></div>
+                                                <div style={{ fontSize: '14px' }}>영상 로딩 중...</div>
+                                            </div>
+                                        )}
+                                        {videoError && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '50%',
+                                                left: '50%',
+                                                transform: 'translate(-50%, -50%)',
+                                                color: '#ffffff',
+                                                textAlign: 'center',
+                                                zIndex: 10,
+                                                pointerEvents: 'none'
+                                            }}>
+                                                <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
+                                                <div>영상을 불러올 수 없습니다</div>
+                                            </div>
+                                        )}
+                                    </>
+                                )
                             ) : (
                                 <div style={{
                                     color: '#ffffff',
@@ -1200,6 +1444,7 @@ const VideoAnalysis = () => {
                 </Fab>
             </Tooltip>
         </div>
+        </>
     );
 };
 

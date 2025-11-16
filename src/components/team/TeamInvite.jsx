@@ -44,13 +44,16 @@ const TeamInvite = ({ open, onClose, team }) => {
   const [expiresAt, setExpiresAt] = useState(null);
 
   useEffect(() => {
-    if (open && team) {
+    if (open && team && team.id) {
       generateInvite();
     }
   }, [open, team]);
 
   const generateInvite = async () => {
-    if (!team) return;
+    if (!team || !team.id) {
+      setError('팀 정보가 올바르지 않습니다.');
+      return;
+    }
     
     setLoading(true);
     setError('');
@@ -102,7 +105,7 @@ const TeamInvite = ({ open, onClose, team }) => {
     return `${hours}시간 ${minutes}분 남음`;
   };
 
-  if (!team) return null;
+  if (!team || !team.id) return null;
 
   return (
     <>

@@ -1,7 +1,7 @@
 // src/pages/OAuth2RedirectHandler.jsx
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { loginSuccess, setUser } from '../store/slices/authSlice';
 
@@ -9,6 +9,7 @@ const OAuth2RedirectHandler = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const { isAuthenticated } = useSelector(state => state.auth);
 
     useEffect(() => {
         const handleOAuth2Callback = async () => {
@@ -51,8 +52,11 @@ const OAuth2RedirectHandler = () => {
                 // Redux로 사용자 정보 업데이트
                 dispatch(setUser(userInfo));
 
-                // 메인 페이지로 리다이렉트
-                navigate('/dashboard');
+                // Redux 상태 업데이트 완료를 기다린 후 리다이렉트
+                // 다음 렌더링 사이클에서 isAuthenticated가 true가 될 때까지 대기
+                setTimeout(() => {
+                    navigate('/dashboard', { replace: true });
+                }, 200);
             } catch (error) {
                 console.error('OAuth2 callback error:', error);
                 navigate(`/login?error=${encodeURIComponent('OAuth2 로그인 처리 중 오류가 발생했습니다.')}`);
@@ -61,6 +65,19 @@ const OAuth2RedirectHandler = () => {
 
         handleOAuth2Callback();
     }, [location, navigate, dispatch]);
+
+    // isAuthenticated가 true가 되면 대시보드로 리다이렉트 (추가 안전장치)
+    useEffect(() => {
+        if (isAuthenticated) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                // 이미 리다이렉트되었는지 확인 (중복 방지)
+                if (location.pathname === '/oauth2/callback/google') {
+                    navigate('/dashboard', { replace: true });
+                }
+            }
+        }
+    }, [isAuthenticated, navigate, location.pathname]);
 
     return (
         <Box

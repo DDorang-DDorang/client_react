@@ -395,6 +395,13 @@ const topicService = {
             const response = await api.post(`/api/topics/${topicId}/presentations`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
+                },
+                timeout: 600000, // 10분 타임아웃 (대용량 파일 업로드 및 처리 시간 고려)
+                onUploadProgress: (progressEvent) => {
+                    if (progressEvent.total) {
+                        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                        console.log(`업로드 진행률: ${percentCompleted}%`);
+                    }
                 }
             });
             

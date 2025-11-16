@@ -14,6 +14,7 @@ import TeamJoin from './team/TeamJoin';
 import TeamInvite from './team/TeamInvite';
 import { setTopics, setPresentations, setCurrentTopic, setLoading, setError, updateTopic, deleteTopic, updatePresentation, deletePresentation, addTopic } from '../store/slices/topicSlice';
 import { fetchUserTeams, createTeam, joinTeamByInvite } from '../store/slices/teamSlice';
+import { getVideoUrl } from '../utils/videoUrlUtils';
 
 const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     const navigate = useNavigate();
@@ -35,6 +36,7 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     const [teamForTopicCreation, setTeamForTopicCreation] = useState(null);
     const [analysisResults, setAnalysisResults] = useState({});
     const [topicPresentations, setTopicPresentations] = useState({});
+    const [analysisStatuses, setAnalysisStatuses] = useState({}); // 프레젠테이션별 분석 진행 상태
 
     // 관리 모달 상태
     const [showTopicManager, setShowTopicManager] = useState(false);
@@ -49,7 +51,16 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
 
     const presentations = useSelector(state => state.topic.presentations);
     const currentTopic = useSelector(state => state.topic.currentTopic);
-    const { teams = [] } = useSelector(state => state.team);
+    // teams 배열 전체를 구독하되, 길이만 체크하여 불필요한 재렌더링 방지
+    // teamsFromStore를 직접 구독하되, 메모이제이션으로 재렌더링 최소화
+    const teamsFromStore = useSelector(state => state.team.teams || []);
+    const teamsLength = teamsFromStore.length;
+    
+    // teams 배열을 메모이제이션하여 참조가 변경되어도 길이가 같으면 동일한 배열로 간주
+    // 길이가 변경되지 않으면 이전 배열 참조 유지
+    const teams = useMemo(() => {
+        return teamsFromStore;
+    }, [teamsLength]);
     const { notifications } = useSelector(state => state.notification);
 
     // 개인 토픽 필터링
@@ -58,49 +69,166 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     // 팀 토픽 필터링
     const teamTopics = Array.isArray(topics) ? topics.filter(topic => topic.isTeamTopic) : [];
     
-    // 디버깅 로그 추가
-    useEffect(() => {
-        console.log('토픽 상태 업데이트:');
-        console.log('전체 토픽:', topics.length, '개');
-        console.log('개인 토픽:', privateTopics.length, '개');
-        console.log('팀 토픽:', teamTopics.length, '개');
-        console.log('개인 토픽 목록:', privateTopics.map(t => ({ id: t.id, title: t.title || t.name, isTeamTopic: t.isTeamTopic })));
-        console.log('팀 토픽 목록:', teamTopics.map(t => ({ id: t.id, title: t.title || t.name, isTeamTopic: t.isTeamTopic, teamId: t.teamId })));
-    }, [topics, privateTopics.length, teamTopics.length]);
     
-    // 컴포넌트 마운트 시 토픽 목록과 팀 목록 로드
+    // 마지막 로드 시간 추적 (중복 요청 방지)
+    const lastLoadTimeRef = useRef(0);
+    const DATA_CACHE_DURATION = 30000; // 30초 동안 캐시 유지
+
+    // 컴포넌트 마운트 시 토픽 목록과 팀 목록 로드 (캐시 확인 및 엄격한 제한)
+    const teamsLoadedRef = useRef(false); // 팀 목록이 한 번 로드되었는지 추적
+    const userRef = useRef(null); // user 참조 추적
+    
     useEffect(() => {
         // user가 null이 아니고, 식별자가 있을 때만 호출
         if (user && (user.userId || user.id || user.email)) {
-            loadTopics();
-            loadTeams();
-        }
-    }, [user]);
-    
-    // 팀 토픽 생성 후 상태 변화 감지 (한 번만 실행)
-    useEffect(() => {
-        if (teamTopics.length > 0) {
-            console.log('팀 토픽 상태 변화 감지:', teamTopics.length, '개');
-            // teamId가 없는 팀 토픽들만 로그로 표시
-            const topicsWithoutTeamId = teamTopics.filter(topic => !topic.teamId);
-            if (topicsWithoutTeamId.length > 0) {
-                console.warn(`${topicsWithoutTeamId.length}개의 팀 토픽에 teamId가 없습니다:`, 
-                    topicsWithoutTeamId.map(t => t.title));
+            const currentUserId = user.userId || user.id;
+            const previousUserId = userRef.current?.userId || userRef.current?.id;
+            
+            // user가 변경되지 않았고, 팀 목록이 이미 로드되었으면 스킵
+            if (currentUserId === previousUserId && teamsLoadedRef.current && teamsLength > 0) {
+                return;
+            }
+            
+            // user가 변경되었거나 처음 로드하는 경우
+            if (currentUserId !== previousUserId) {
+                userRef.current = user;
+                teamsLoadedRef.current = false; // user가 변경되면 팀 목록도 다시 로드
+            }
+            
+            const now = Date.now();
+            const timeSinceLastLoad = now - lastLoadTimeRef.current;
+            
+            // Redux store에 데이터가 있고, 최근에 로드했으면 재로드하지 않음
+            const hasTopics = Array.isArray(topics) && topics.length > 0;
+            const hasTeams = teamsLength > 0; // teams 배열 대신 길이만 확인
+            
+            // 초기 로드인 경우 (lastLoadTimeRef가 0) 항상 로드
+            const isInitialLoad = lastLoadTimeRef.current === 0;
+            
+            // 팀 목록은 한 번만 로드 (이미 로드되었으면 재로드하지 않음)
+            if (!isInitialLoad && hasTopics && hasTeams && timeSinceLastLoad < DATA_CACHE_DURATION && teamsLoadedRef.current) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('CollapsibleSidebar: 캐시된 데이터 사용 (재로드 스킵)');
+                }
+                return; // 캐시된 데이터 사용
+            }
+            
+            // 데이터가 없거나 오래되었거나 초기 로드면 로드
+            lastLoadTimeRef.current = now;
+            
+            // 토픽과 팀을 병렬로 로드 (순차적이 아닌)
+            // 초기 로드이거나 데이터가 없으면 항상 로드
+            if (isInitialLoad || !hasTopics) {
+                loadTopics();
+            }
+            // 팀 목록은 한 번만 로드 (이미 로드되었으면 재로드하지 않음)
+            if ((isInitialLoad || !hasTeams) && !teamsLoadedRef.current) {
+                teamsLoadedRef.current = true;
+                loadTeams();
             }
         }
-    }, [teamTopics.length]); // teamTopics.length만 의존성으로 사용
+    }, [user]); // user만 의존성으로 유지 (teamsLength는 체크용으로만 사용)
+    
+    // 로그아웃 시 모든 상태 초기화
+    useEffect(() => {
+        if (!user || (!user.userId && !user.id && !user.email)) {
+            // user가 null이거나 유효하지 않으면 모든 상태 초기화
+            setExpandedTopics(new Set());
+            setExpandedTeams(new Set());
+            setAnalysisResults({});
+            setTopicPresentations({});
+            setAnalysisStatuses({});
+            setIsPrivateExpanded(true);
+            setIsTeamExpanded(true);
+            setShowTopicCreator(false);
+            setShowTeamCreator(false);
+            setShowTeamJoin(false);
+            setShowTeamInvite(false);
+            setSelectedTeam(null);
+            setShowTeamTopicCreator(false);
+            setTeamForTopicCreation(null);
+            setShowTopicManager(false);
+            setShowPresentationManager(false);
+            setSelectedTopic(null);
+            setSelectedPresentation(null);
+            setShowVideoPlayer(false);
+            setShowNotification(false);
+            setNotificationMessage('');
+            setShowPresentationOptions(false);
+            setSelectedPresentationForOptions(null);
+            
+            // ref 값들도 초기화
+            teamsLoadedRef.current = false;
+            userRef.current = null;
+            lastLoadTimeRef.current = 0;
+            if (loadingPresentationsRef.current) {
+                loadingPresentationsRef.current.clear();
+            }
+            lastAnalysisLoadTimeRef.current = 0;
+        }
+    }, [user]);
 
     useEffect(() => {
-        // refreshKey가 변경되면 모든 토픽의 발표 목록 새로고침
+        // refreshKey가 변경되면 확장된 토픽의 발표 목록만 새로고침
         if (refreshKey > 0) {
             topics.forEach(topic => {
-                loadPresentations(topic.id);
+                if (expandedTopics.has(topic.id)) {
+                    loadPresentations(topic.id);
+                }
             });
         }
-    }, [refreshKey]);
+    }, [refreshKey, topics, expandedTopics]);
 
-    // 알림이 새로 오면 프레젠테이션 목록 새로고침
+    // 확장된 토픽의 프레젠테이션에 대해 분석 결과 자동 로드 (최적화: 중복 방지 및 디바운싱)
+    const loadingPresentationsRef = useRef(new Set()); // 현재 로드 중인 프레젠테이션 ID 추적
+    const lastAnalysisLoadTimeRef = useRef(0); // 마지막 분석 로드 시간
+    const LOAD_DEBOUNCE_MS = 1000; // 1초 디바운스
+    
+    useEffect(() => {
+        const now = Date.now();
+        const timeSinceLastLoad = now - lastAnalysisLoadTimeRef.current;
+        
+        // 너무 자주 실행되지 않도록 디바운싱
+        if (timeSinceLastLoad < LOAD_DEBOUNCE_MS) {
+            return;
+        }
+        
+        lastAnalysisLoadTimeRef.current = now;
+        
+        // 확장된 토픽의 모든 프레젠테이션에 대해 분석 결과 로드
+        const expandedTopicIds = Array.from(expandedTopics);
+        expandedTopicIds.forEach(topicId => {
+            const presentations = topicPresentations[topicId] || [];
+            presentations.forEach(presentation => {
+                const presentationId = presentation.id;
+                
+                // 이미 로드 중이면 스킵
+                if (loadingPresentationsRef.current.has(presentationId)) {
+                    return;
+                }
+                
+                const analysisData = analysisResults[presentationId];
+                const analysisStatus = analysisStatuses[presentationId];
+                
+                // 분석 결과가 없고 로드되지 않았으면 상태 확인 후 로드 시도
+                // 상태를 먼저 확인하여 초기에 "분석 진행중"이 표시되도록 함
+                if (!analysisData && !analysisStatus) {
+                    // 로드 중 플래그 설정
+                    loadingPresentationsRef.current.add(presentationId);
+                    
+                    // 상태를 먼저 확인 (초기 상태를 설정)
+                    checkPresentationAnalysisStatus(presentationId);
+                    
+                    // 그 다음 분석 결과 로드 시도 (finally에서 플래그 해제)
+                    loadAnalysisResults(presentationId);
+                }
+            });
+        });
+    }, [expandedTopics, topicPresentations.length]); // topicPresentations 객체 참조 대신 길이만 의존성으로 사용
+
+    // 알림이 새로 오면 프레젠테이션 목록 새로고침 (최적화: 확장된 토픽만, 분석 관련 알림만)
     const lastNotificationRef = useRef(null);
+    const checkingStatusesRef = useRef(new Set()); // 현재 확인 중인 프레젠테이션 ID 추적 (중복 방지)
     useEffect(() => {
         if (notifications && notifications.length > 0) {
             const latestNotification = notifications[0];
@@ -108,70 +236,149 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             
             // 새 알림인지 확인
             if (lastNotificationRef.current !== latestId) {
-                console.log('🔔 새 알림 감지 - 프레젠테이션 목록 새로고침');
-                // 초기 로드가 아니면 새로고침
+                // 초기 로드가 아니고, 분석 완료 알림인 경우에만 새로고침
                 if (lastNotificationRef.current !== null) {
-                    topics.forEach(topic => {
-                        loadPresentations(topic.id);
-                    });
+                    // 분석 완료 알림인지 확인 (AI_ANALYSIS_COMPLETE 타입)
+                    const isAnalysisComplete = latestNotification.type === 'AI_ANALYSIS_COMPLETE';
+                    
+                    if (isAnalysisComplete) {
+                        // 확장된 토픽만 새로고침하여 불필요한 요청 방지
+                        topics.forEach(topic => {
+                            if (expandedTopics.has(topic.id)) {
+                                loadPresentations(topic.id);
+                            }
+                        });
+                    }
+                    // 다른 타입의 알림은 새로고침하지 않음 (불필요한 요청 방지)
                 }
                 lastNotificationRef.current = latestId;
             }
         }
-    }, [notifications]); // notifications 배열 변경 감지
+    }, [notifications, topics, expandedTopics]); // notifications 배열 변경 감지
 
-    // 주기적으로 프레젠테이션 목록 새로고침 (분석 상태 업데이트)
+    // 주기적으로 프레젠테이션 목록 새로고침 (다른 페이지에 있을 때도 업데이트되도록)
+    const presentationRefreshIntervalRef = useRef(null);
     useEffect(() => {
-        if (!user) return;
+        if (!user || !(user.userId || user.id || user.email)) {
+            // 인증되지 않았으면 interval 정리
+            if (presentationRefreshIntervalRef.current) {
+                clearInterval(presentationRefreshIntervalRef.current);
+                presentationRefreshIntervalRef.current = null;
+            }
+            return;
+        }
 
+        // 확장된 토픽의 발표 목록을 주기적으로 새로고침 (2분마다)
         const refreshPresentations = () => {
-            console.log('🔄 주기적으로 프레젠테이션 목록 새로고침');
+            // 확장된 토픽만 새로고침하여 불필요한 요청 방지
             topics.forEach(topic => {
-                loadPresentations(topic.id);
+                if (expandedTopics.has(topic.id)) {
+                    loadPresentations(topic.id);
+                }
             });
         };
 
-        // 20초마다 새로고침
-        const interval = setInterval(refreshPresentations, 20000);
+        // 초기 실행
+        refreshPresentations();
 
-        return () => clearInterval(interval);
-    }, [user, topics.length]); // topics.length 변경 시 재설정
+        // 2분마다 새로고침
+        presentationRefreshIntervalRef.current = setInterval(refreshPresentations, 120000); // 2분 = 120000ms
+
+        return () => {
+            if (presentationRefreshIntervalRef.current) {
+                clearInterval(presentationRefreshIntervalRef.current);
+                presentationRefreshIntervalRef.current = null;
+            }
+        };
+    }, [user, topics, expandedTopics]); // user, topics, expandedTopics 변경 시 재설정
+
+    // 페이지 포커스 시 발표 목록 새로고침
+    useEffect(() => {
+        if (!user || !(user.userId || user.id || user.email)) {
+            return;
+        }
+
+        const handleFocus = () => {
+            // 페이지가 포커스를 받으면 확장된 토픽의 발표 목록 새로고침
+            topics.forEach(topic => {
+                if (expandedTopics.has(topic.id)) {
+                    loadPresentations(topic.id);
+                }
+            });
+        };
+
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [user, topics, expandedTopics]);
 
     const loadTopics = async () => {
         if (!user || !(user.userId || user.id || user.email)) {
-            console.warn('사용자 정보가 없어 토픽을 로드할 수 없습니다.', user);
+            if (process.env.NODE_ENV === 'development') {
+                console.warn('사용자 정보가 없어 토픽을 로드할 수 없습니다.', user);
+            }
             return;
         }
         const userIdentifier = user.userId || user.id || user.email;
-        console.log('userIdentifier:', userIdentifier);
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log('CollapsibleSidebar: 토픽 로드 시작 - userIdentifier:', userIdentifier);
+        }
 
         dispatch(setLoading(true));
         try {
             const result = await topicService.getTopics(userIdentifier);
+            if (process.env.NODE_ENV === 'development') {
+                console.log('CollapsibleSidebar: 토픽 로드 결과:', result);
+            }
+            
             if (result.success) {
                 // 서버에서 받은 토픽들을 그대로 사용 (이미 올바른 순서로 정렬됨)
                 const serverTopics = result.data || [];
                 
-                console.log('서버에서 받은 토픽:', serverTopics);
-                
-                // 서버 데이터를 Redux store에 설정
-                dispatch(setTopics(serverTopics));
-                
-                // 모든 토픽의 발표 개수를 로드 (사이드바 표시용)
-                serverTopics.forEach(topic => {
-                    loadPresentations(topic.id);
-                });
-                
-                // 로컬 데이터 사용 시 알림
-                if (result.isLocal) {
-                    console.log('로컬 토픽 데이터 사용 중');
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('CollapsibleSidebar: 로드된 토픽 개수:', serverTopics.length);
                 }
+                
+                // 각 토픽의 발표 개수 가져오기 (병렬 처리)
+                const topicsWithCounts = await Promise.all(
+                    serverTopics.map(async (topic) => {
+                        try {
+                            const presentationsResult = await topicService.getPresentations(topic.id);
+                            const presentationCount = presentationsResult.success 
+                                ? (presentationsResult.data || []).length 
+                                : 0;
+                            
+                            return {
+                                ...topic,
+                                presentationCount: presentationCount
+                            };
+                        } catch (error) {
+                            console.error(`토픽 ${topic.id}의 발표 개수 로드 실패:`, error);
+                            return {
+                                ...topic,
+                                presentationCount: 0
+                            };
+                        }
+                    })
+                );
+                
+                // 발표 개수가 포함된 토픽 목록을 Redux store에 설정
+                dispatch(setTopics(topicsWithCounts));
+                
+                // 마지막 로드 시간 업데이트
+                lastLoadTimeRef.current = Date.now();
             } else {
-                dispatch(setError(result.error));
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('CollapsibleSidebar: 토픽 로드 실패:', result.error);
+                }
+                dispatch(setError(result.error || '토픽을 불러오는 중 오류가 발생했습니다.'));
             }
         } catch (error) {
+            console.error('CollapsibleSidebar: 토픽 로드 중 예외 발생:', error);
             dispatch(setError('토픽을 불러오는 중 오류가 발생했습니다.'));
-            console.error('Load topics error:', error);
         } finally {
             dispatch(setLoading(false));
         }
@@ -187,26 +394,31 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
 
     const loadPresentations = async (topicId) => {
         try {
-            console.log('Loading presentations for topic:', topicId);
             const result = await topicService.getPresentations(topicId);
             if (result.success) {
-                console.log('Presentations loaded:', result.data);
+                const presentations = result.data || [];
                 
                 // 토픽별 프레젠테이션 상태 업데이트
                 setTopicPresentations(prev => ({
                     ...prev,
-                    [topicId]: result.data
+                    [topicId]: presentations
                 }));
                 
                 // Redux store도 업데이트 (기존 호환성 유지)
-                dispatch(setPresentations(result.data));
+                dispatch(setPresentations(presentations));
                 
-                // 각 프레젠테이션의 분석 결과 로드
-                for (const presentation of result.data) {
-                    loadAnalysisResults(presentation.id);
+                // 확장된 토픽의 프레젠테이션에 대해 분석 결과 로드 (병렬 처리)
+                if (expandedTopics.has(topicId)) {
+                    // 모든 프레젠테이션에 대해 분석 결과를 병렬로 로드
+                    presentations.forEach(presentation => {
+                        loadAnalysisResults(presentation.id);
+                        checkPresentationAnalysisStatus(presentation.id);
+                    });
                 }
             } else {
-                console.error('Failed to load presentations:', result.error);
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('Failed to load presentations:', result.error);
+                }
                 // 실패 시 빈 배열로 설정
                 setTopicPresentations(prev => ({
                     ...prev,
@@ -283,7 +495,7 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     // Spring Boot 데이터를 표시 형식으로 변환
     const convertSpringBootDataToDisplayFormat = (data) => {
         if (!data) {
-            return null;
+            return { scores: null, grades: null };
         }
 
         // Spring Boot 응답 데이터 변환
@@ -315,13 +527,42 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             anxietyComment
         };
 
-        // 등급 데이터 (PentagonChart에서 사용)
+        // 등급을 영문으로 변환하는 헬퍼 함수
+        const normalizeGrade = (grade) => {
+            if (!grade) return 'C';
+            
+            // 이미 영문 등급이면 그대로 반환
+            if (typeof grade === 'string' && ['A', 'B', 'C', 'D', 'E', 'F'].includes(grade.toUpperCase())) {
+                return grade.toUpperCase();
+            }
+            
+            // 한글 등급을 영문으로 변환
+            const koreanToEnglish = {
+                '매우 좋음': 'A',
+                '좋음': 'B',
+                '보통': 'C',
+                '나쁨': 'D',
+                '매우 나쁨': 'F',
+                'A+': 'A',
+                'A-': 'A',
+                'B+': 'B',
+                'B-': 'B',
+                'C+': 'C',
+                'C-': 'C',
+                'D+': 'D',
+                'D-': 'D'
+            };
+            
+            return koreanToEnglish[grade] || 'C';
+        };
+
+        // 등급 데이터 (PentagonChart에서 사용) - VideoAnalysis와 동일한 형식
         const grades = {
-            voice: fastApiData.intensityGrade,
-            speed: fastApiData.wpmGrade,
-            expression: fastApiData.anxietyGrade,
-            pitch: fastApiData.pitchGrade,
-            clarity: fastApiData.pronunciationGrade || derivePronunciationGrade(fastApiData.pronunciationScore)
+            voice: normalizeGrade(fastApiData.intensityGrade),
+            speed: normalizeGrade(fastApiData.wpmGrade),
+            expression: normalizeGrade(fastApiData.anxietyGrade),
+            pitch: normalizeGrade(fastApiData.pitchGrade),
+            clarity: normalizeGrade(fastApiData.pronunciationGrade || derivePronunciationGrade(fastApiData.pronunciationScore))
         };
 
         // 점수 계산 (기존 호환성 유지)
@@ -338,23 +579,123 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
 
     const loadAnalysisResults = async (presentationId) => {
         try {
-            const hasResults = await videoAnalysisService.hasAnalysisResults(presentationId);
-            if (hasResults.success && hasResults.data.hasResults) {
-                const analysisData = await videoAnalysisService.getAllAnalysisResults(presentationId);
-                if (analysisData.success) {
-                    console.log('Sidebar - Analysis data loaded for:', presentationId, analysisData.data);
-                    
-                    // 데이터를 표시 형식으로 변환
-                    const convertedData = convertSpringBootDataToDisplayFormat(analysisData.data);
-                    
-                    setAnalysisResults(prev => ({
-                        ...prev,
-                        [presentationId]: convertedData
-                    }));
+            // 먼저 분석 상태를 확인하여 현재 상태를 파악
+            const currentStatus = await checkAnalysisStatus(presentationId);
+            
+            // 분석이 완료되지 않았으면 결과를 로드하지 않음
+            if (currentStatus.status !== 'completed' && !currentStatus.isAnalyzing) {
+                // 대기 중이거나 시작되지 않은 상태
+                setAnalysisStatuses(prev => ({
+                    ...prev,
+                    [presentationId]: currentStatus
+                }));
+                
+                // 이전 분석 결과가 있으면 제거 (새로운 분석이 시작되었을 수 있음)
+                setAnalysisResults(prev => {
+                    const newResults = { ...prev };
+                    delete newResults[presentationId];
+                    return newResults;
+                });
+                return;
+            }
+            
+            // 분석이 진행 중일 때도 이전 결과를 제거 (새로운 분석이 진행 중)
+            if (currentStatus.isAnalyzing) {
+                setAnalysisStatuses(prev => ({
+                    ...prev,
+                    [presentationId]: currentStatus
+                }));
+                
+                // 진행 중일 때는 이전 결과를 제거하여 차트가 표시되지 않도록 함
+                setAnalysisResults(prev => {
+                    const newResults = { ...prev };
+                    delete newResults[presentationId];
+                    return newResults;
+                });
+                return;
+            }
+            
+            // 분석이 완료되었거나 진행 중일 때만 결과 로드 시도
+            // hasAnalysisResults 호출을 스킵하고 직접 getAllAnalysisResults 호출
+            // 결과가 없으면 에러가 나지만, 불필요한 요청을 하나 줄일 수 있음
+            const analysisData = await videoAnalysisService.getAllAnalysisResults(presentationId);
+            if (analysisData.success && analysisData.data) {
+                // 데이터를 표시 형식으로 변환
+                const convertedData = convertSpringBootDataToDisplayFormat(analysisData.data);
+                
+                setAnalysisResults(prev => ({
+                    ...prev,
+                    [presentationId]: convertedData
+                }));
+                
+                // 분석 상태를 다시 확인하여 최신 상태로 업데이트
+                // 분석 결과가 있어도 실제 상태가 완료인지 확인
+                const latestStatus = await checkAnalysisStatus(presentationId);
+                setAnalysisStatuses(prev => ({
+                    ...prev,
+                    [presentationId]: latestStatus
+                }));
+            } else {
+                // 분석 결과가 없으면 분석 상태 확인
+                setAnalysisStatuses(prev => ({
+                    ...prev,
+                    [presentationId]: currentStatus
+                }));
+            }
+        } catch (error) {
+            // 404 에러는 분석 결과가 없는 것이므로 정상
+            if (error.response?.status === 404) {
+                // 분석 결과가 없으면 분석 상태 확인
+                checkPresentationAnalysisStatus(presentationId);
+            } else {
+                console.error('Load analysis results error:', error);
+                // 다른 에러 발생 시에도 분석 상태 확인
+                checkPresentationAnalysisStatus(presentationId);
+            }
+        } finally {
+            // 로드 완료 시 플래그 해제
+            loadingPresentationsRef.current.delete(presentationId);
+        }
+    };
+
+    // 프레젠테이션의 분석 진행 상태 확인 (최적화: 주기 늘리고 완료 시 중단, 중복 방지)
+    const checkPresentationAnalysisStatus = async (presentationId) => {
+        // 이미 확인 중이면 중복 요청 방지
+        if (checkingStatusesRef.current.has(presentationId)) {
+            return;
+        }
+        
+        // 확인 중 플래그 설정
+        checkingStatusesRef.current.add(presentationId);
+        
+        try {
+            const status = await checkAnalysisStatus(presentationId);
+            setAnalysisStatuses(prev => ({
+                ...prev,
+                [presentationId]: status
+            }));
+            
+            // 분석 진행 중이면 10초 후 다시 확인 (주기 증가)
+            if (status.isAnalyzing) {
+                setTimeout(() => {
+                    // 확인 중 플래그 해제
+                    checkingStatusesRef.current.delete(presentationId);
+                    // 다시 확인 (중복 방지 로직이 있으므로 안전)
+                    checkPresentationAnalysisStatus(presentationId);
+                }, 10000); // 5초 -> 10초로 증가
+            } else {
+                // 확인 중 플래그 해제
+                checkingStatusesRef.current.delete(presentationId);
+                
+                // 분석이 완료되면 결과를 다시 로드
+                if (status.status === 'completed') {
+                    loadAnalysisResults(presentationId);
                 }
             }
         } catch (error) {
-            console.error('Load analysis results error:', error);
+            console.error('Check analysis status error:', error);
+            // 에러 발생 시에도 플래그 해제
+            checkingStatusesRef.current.delete(presentationId);
         }
     };
 
@@ -631,12 +972,12 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
             }));
         }
         
-        // 분석 페이지에서 현재 보고 있는 프레젠테이션을 삭제한 경우 대시보드로 이동
+        // 분석 페이지나 분석 대기 페이지에서 현재 보고 있는 프레젠테이션을 삭제한 경우 대시보드로 이동
         const currentPath = location.pathname;
         const currentPresentationId = params.presentationId || params.id;
         
-        if (currentPath.includes('/video-analysis/') && currentPresentationId === presentationId) {
-            console.log('분석 페이지에서 현재 프레젠테이션 삭제 - 대시보드로 이동');
+        if ((currentPath.includes('/video-analysis/') || currentPath.includes('/analysis-progress/')) 
+            && currentPresentationId === presentationId) {
             navigate('/dashboard', { replace: true });
         }
     };
@@ -797,6 +1138,16 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
         
         return groups;
     }, [teamTopics.length, teams.length]); // 길이만 의존성으로 사용하여 무한 루프 방지
+    
+    // teams.length가 변경되어도 불필요한 재렌더링 방지를 위한 최적화
+    // teams 배열의 참조가 변경되어도 길이가 같으면 재계산하지 않음
+    const teamsLengthRef = useRef(teams?.length || 0);
+    const teamTopicsLengthRef = useRef(teamTopics?.length || 0);
+    
+    useEffect(() => {
+        teamsLengthRef.current = teams?.length || 0;
+        teamTopicsLengthRef.current = teamTopics?.length || 0;
+    }, [teams?.length, teamTopics?.length]);
 
     // Redux에서는 selector 함수로 직접 구현
     const getPresentationsByTopic = (presentations, topicId) => {
@@ -900,6 +1251,10 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
         return topicList.map((topic) => {
             // 토픽별 프레젠테이션 상태에서 가져오기
             const presentationsForTopic = topicPresentations[topic.id] || [];
+            // 토픽 객체에 presentationCount가 있으면 사용, 없으면 로드된 프레젠테이션 개수 사용
+            const presentationCount = topic.presentationCount !== undefined 
+                ? topic.presentationCount 
+                : presentationsForTopic.length;
             const isExpanded = expandedTopics.has(topic.id);
             
             return (
@@ -960,19 +1315,19 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                         {/* 프레젠테이션 개수 (최대 2개) */}
                         <div style={{
                             fontSize: '12px',
-                            color: presentationsForTopic.length >= 2 ? '#dc3545' : '#666666',
-                            backgroundColor: presentationsForTopic.length >= 2 ? '#ffe0e0' : '#f0f0f0',
+                            color: presentationCount >= 2 ? '#dc3545' : '#666666',
+                            backgroundColor: presentationCount >= 2 ? '#ffe0e0' : '#f0f0f0',
                             borderRadius: '10px',
                             padding: '2px 8px',
                             minWidth: '35px',
                             textAlign: 'center',
-                            fontWeight: presentationsForTopic.length >= 2 ? '600' : '400'
+                            fontWeight: presentationCount >= 2 ? '600' : '400'
                         }}>
-                            {presentationsForTopic.length}/2
+                            {presentationCount}/2
                         </div>
 
                         {/* 비교하기 버튼 (발표가 정확히 2개일 때만 표시) */}
-                        {presentationsForTopic.length === 2 && (
+                        {presentationCount === 2 && (
                             <div
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -1040,8 +1395,57 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                             {presentationsForTopic.length > 0 ? (
                                 presentationsForTopic.map((presentation) => {
                                     const analysisData = analysisResults[presentation.id];
+                                    const analysisStatus = analysisStatuses[presentation.id];
+                                    
+                                    const analysisStatusValue = analysisStatus?.status;
+                                    
+                                    // 분석 상태에 따른 분류
+                                    // 1. 상태가 없으면 "분석 대기중" (아직 확인하지 않은 상태)
+                                    // 2. pending 또는 not_started이면 "분석 대기중"
+                                    // 3. processing이면 "분석 진행중"
+                                    // 4. completed이면 완료
+                                    const isPending = !analysisStatus || 
+                                        analysisStatusValue === 'pending' || 
+                                        analysisStatusValue === 'not_started';
+                                    const isProcessing = analysisStatus && 
+                                        (analysisStatus.isAnalyzing || analysisStatusValue === 'processing');
+                                    
+                                    // 분석 진행 중인지 여부 (대기 중이 아닌 진행 중)
+                                    const isAnalyzing = isProcessing && !isPending;
+                                    
+                                    // 분석이 완료되었는지 엄격하게 확인
+                                    // 1. analysisStatus가 반드시 존재해야 함
+                                    // 2. status가 'completed'여야 함
+                                    // 3. isAnalyzing이 false여야 함
+                                    // 4. 분석이 진행 중이거나 대기 중이면 완료되지 않은 것으로 간주
+                                    const isAnalysisComplete = analysisStatus 
+                                        && analysisStatusValue === 'completed' 
+                                        && !isAnalyzing
+                                        && analysisStatusValue !== 'processing'
+                                        && analysisStatusValue !== 'pending'
+                                        && analysisStatusValue !== 'not_started';
+                                    
                                     // 실제 분석 데이터가 있을 때만 육각형 표시
-                                    const hasAnalysis = !!analysisData && !!analysisData.scores;
+                                    // scores 또는 grades가 있고, 실제 값이 있으면 분석 결과가 있는 것으로 판단
+                                    // 단, 분석이 완료되었을 때만 차트 표시 (분석 진행 중이면 표시하지 않음)
+                                    const hasScores = analysisData?.scores && 
+                                        (analysisData.scores.voice || analysisData.scores.speed || 
+                                         analysisData.scores.expression || analysisData.scores.pitch || 
+                                         analysisData.scores.clarity);
+                                    const hasGrades = analysisData?.grades && 
+                                        (analysisData.grades.voice || analysisData.grades.speed || 
+                                         analysisData.grades.expression || analysisData.grades.pitch || 
+                                         analysisData.grades.clarity);
+                                    
+                                    // 분석이 완료되었고 데이터가 있을 때만 차트 표시
+                                    // 분석 진행 중이거나 상태가 불명확하면 차트를 표시하지 않음
+                                    // analysisStatus가 없으면 차트를 표시하지 않음 (초기 상태는 진행 중으로 간주)
+                                    // isPending이나 isProcessing이 true이면 차트를 표시하지 않음
+                                    const hasAnalysis = analysisStatus 
+                                        && isAnalysisComplete 
+                                        && !isPending 
+                                        && !isProcessing
+                                        && (hasScores || hasGrades);
                                     
                                     return (
                                         <div
@@ -1108,95 +1512,153 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                                                 }}>
                                                     {/* 비디오 썸네일 */}
                                                     <div style={{
-                                                        width: '200px',
+                                                        width: '150px',
                                                         height: '150px',
-                                                        backgroundColor: '#f8f9fa',
+                                                        backgroundColor: '#000000',
                                                         borderRadius: '8px',
                                                         border: '1px solid #e9ecef',
                                                         position: 'relative',
-                                                        overflow: 'hidden'
+                                                        overflow: 'hidden',
+                                                        flexShrink: 0
                                                     }}>
-                                                        <video 
-                                                            src={presentation.videoUrl 
-                                                                ? (presentation.videoUrl.startsWith('http') 
-                                                                    ? presentation.videoUrl 
-                                                                    : `${window.location.origin.includes('localhost') ? 'http://localhost:8080' : window.location.origin.replace(/:\d+$/, ':8080')}${presentation.videoUrl}`)
-                                                                : undefined}
-                                                            style={{
-                                                                width: '100%',
-                                                                height: '100%',
-                                                                objectFit: 'cover',
-                                                                borderRadius: '8px'
-                                                            }}
-                                                            muted
-                                                            preload="metadata"
-                                                            onLoadedMetadata={(e) => {
-                                                                e.target.currentTime = 1; // 1초 지점의 프레임
-                                                            }}
-                                                            onError={(e) => {
-                                                                // 비디오 로드 실패 시 기본 썸네일 표시
-                                                                e.target.style.display = 'none';
-                                                                e.target.nextElementSibling.style.display = 'flex';
-                                                            }}
-                                                        />
-                                                        {/* 비디오 로드 실패 시 대체 썸네일 */}
-                                                        <div style={{
-                                                            width: '100%',
-                                                            height: '100%',
-                                                            backgroundColor: '#333',
-                                                            display: 'none',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            color: 'white',
-                                                            fontSize: '20px',
-                                                            position: 'absolute',
-                                                            top: 0,
-                                                            left: 0
-                                                        }}>
-                                                            ▶
-                                                        </div>
-                                                        {/* 재생 오버레이 아이콘 */}
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            top: '50%',
-                                                            left: '50%',
-                                                            transform: 'translate(-50%, -50%)',
-                                                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                                                            borderRadius: '50%',
-                                                            width: '40px',
-                                                            height: '40px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            color: 'white',
-                                                            fontSize: '18px'
-                                                        }}>
-                                                            ▶
-                                                        </div>
+                                                        {(() => {
+                                                            const videoUrl = presentation.videoUrl ? getVideoUrl(presentation.videoUrl) : null;
+                                                            
+                                                            return videoUrl ? (
+                                                                <>
+                                                                    <video 
+                                                                        src={videoUrl}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            height: '100%',
+                                                                            objectFit: 'cover',
+                                                                            borderRadius: '8px',
+                                                                            position: 'absolute',
+                                                                            top: 0,
+                                                                            left: 0
+                                                                        }}
+                                                                        muted
+                                                                        preload="metadata"
+                                                                        playsInline
+                                                                        onLoadedMetadata={(e) => {
+                                                                            // 첫 프레임(0.1초 지점)으로 이동하여 썸네일 표시 (더 빠른 로딩)
+                                                                            try {
+                                                                                if (e.target.duration > 0.1) {
+                                                                                    e.target.currentTime = 0.1;
+                                                                                } else if (e.target.duration > 0) {
+                                                                                    e.target.currentTime = e.target.duration * 0.05;
+                                                                                }
+                                                                            } catch (err) {
+                                                                                // currentTime 설정 실패 시 무시
+                                                                                if (process.env.NODE_ENV === 'development') {
+                                                                                console.warn('썸네일 프레임 설정 실패:', err);
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                        onSeeked={(e) => {
+                                                                            // 프레임 로드 완료 시 표시
+                                                                            e.target.style.opacity = '1';
+                                                                        }}
+                                                                        onError={(e) => {
+                                                                            // 비디오 로드 실패 시 기본 썸네일 표시
+                                                                            e.target.style.display = 'none';
+                                                                            const fallback = e.target.parentElement.querySelector('.thumbnail-fallback');
+                                                                            if (fallback) {
+                                                                                fallback.style.display = 'flex';
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    {/* 비디오 로드 실패 시 대체 썸네일 */}
+                                                                    <div 
+                                                                        className="thumbnail-fallback"
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            height: '100%',
+                                                                            backgroundColor: '#1a1a1a',
+                                                                            display: 'none',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            color: '#ffffff',
+                                                                            fontSize: '32px',
+                                                                            position: 'absolute',
+                                                                            top: 0,
+                                                                            left: 0,
+                                                                            borderRadius: '8px'
+                                                                        }}
+                                                                    >
+                                                                        🎥
+                                                                    </div>
+                                                                    {/* 재생 오버레이 아이콘 */}
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        top: '50%',
+                                                                        left: '50%',
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                                                        borderRadius: '50%',
+                                                                        width: '48px',
+                                                                        height: '48px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        color: 'white',
+                                                                        fontSize: '20px',
+                                                                        pointerEvents: 'none',
+                                                                        transition: 'all 0.2s ease',
+                                                                        zIndex: 2
+                                                                    }}>
+                                                                        ▶
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div style={{
+                                                                    width: '100%',
+                                                                    height: '100%',
+                                                                    backgroundColor: '#1a1a1a',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    color: '#ffffff',
+                                                                    fontSize: '32px',
+                                                                    borderRadius: '8px'
+                                                                }}>
+                                                                    📄
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
 
                                                     {/* 미니 육각형 차트 또는 분석 대기 상태 */}
                                                     <div style={{
-                                                        width: '180px',
-                                                        height: '180px',
+                                                        width: '150px',
+                                                        height: '150px',
                                                         aspectRatio: '1',
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         margin: '0 auto',
-                                                        overflow: 'hidden'
+                                                        overflow: 'visible',
+                                                        flexShrink: 0,
+                                                        padding: '5px'
                                                     }}>
                                                         {hasAnalysis ? (
                                                             <div style={{
-                                                                width: '180px',
-                                                                height: '180px',
+                                                                width: '140px',
+                                                                height: '140px',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
-                                                                justifyContent: 'center'
+                                                                justifyContent: 'center',
+                                                                overflow: 'visible'
                                                             }}>
                                                                 <PentagonChart
-                                                                    data={analysisData.grades || analysisData.scores}
-                                                                    size={180}
+                                                                    data={analysisData.grades || (analysisData.scores ? {
+                                                                        voice: analysisData.scores.voice >= 90 ? 'A' : analysisData.scores.voice >= 80 ? 'B' : analysisData.scores.voice >= 70 ? 'C' : 'D',
+                                                                        speed: analysisData.scores.speed >= 90 ? 'A' : analysisData.scores.speed >= 80 ? 'B' : analysisData.scores.speed >= 70 ? 'C' : 'D',
+                                                                        expression: analysisData.scores.expression >= 90 ? 'A' : analysisData.scores.expression >= 80 ? 'B' : analysisData.scores.expression >= 70 ? 'C' : 'D',
+                                                                        pitch: analysisData.scores.pitch >= 90 ? 'A' : analysisData.scores.pitch >= 80 ? 'B' : analysisData.scores.pitch >= 70 ? 'C' : 'D',
+                                                                        clarity: analysisData.scores.clarity >= 90 ? 'A' : analysisData.scores.clarity >= 80 ? 'B' : analysisData.scores.clarity >= 70 ? 'C' : 'D'
+                                                                    } : {})}
+                                                                    size={140}
                                                                     showLabels={false}
                                                                     showGrid={false}
                                                                     isPreview={true}
@@ -1205,13 +1667,109 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                                                         ) : (
                                                             <div style={{
                                                                 fontSize: '16px',
-                                                                color: '#999',
+                                                                color: isProcessing ? '#1976d2' : '#999',
                                                                 textAlign: 'center',
                                                                 lineHeight: '1.3',
                                                                 fontWeight: '500'
                                                             }}>
-                                                                분석<br/>대기중
+                                                                {isProcessing ? (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                                                        <div 
+                                                                            className="analysis-spinner"
+                                                                            style={{
+                                                                                width: '20px',
+                                                                                height: '20px',
+                                                                                border: '3px solid #e3f2fd',
+                                                                                borderTopColor: '#1976d2',
+                                                                                borderRadius: '50%'
+                                                                            }}
+                                                                        ></div>
+                                                                        <div>분석<br/>진행중</div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <>분석<br/>대기중</>
+                                                                )}
                                                             </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* 비디오가 없을 때 분석 상태 표시 */}
+                                            {!presentation.videoUrl && (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    padding: '20px',
+                                                    backgroundColor: '#f8f9fa',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #e9ecef',
+                                                    minHeight: '120px'
+                                                }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        alignItems: 'center',
+                                                        gap: '12px',
+                                                        textAlign: 'center'
+                                                    }}>
+                                                        {hasAnalysis ? (
+                                                            <div style={{
+                                                                width: '120px',
+                                                                height: '120px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                overflow: 'visible',
+                                                                padding: '5px'
+                                                            }}>
+                                                                <PentagonChart
+                                                                    data={analysisData.grades || (analysisData.scores ? {
+                                                                        voice: analysisData.scores.voice >= 90 ? 'A' : analysisData.scores.voice >= 80 ? 'B' : analysisData.scores.voice >= 70 ? 'C' : 'D',
+                                                                        speed: analysisData.scores.speed >= 90 ? 'A' : analysisData.scores.speed >= 80 ? 'B' : analysisData.scores.speed >= 70 ? 'C' : 'D',
+                                                                        expression: analysisData.scores.expression >= 90 ? 'A' : analysisData.scores.expression >= 80 ? 'B' : analysisData.scores.expression >= 70 ? 'C' : 'D',
+                                                                        pitch: analysisData.scores.pitch >= 90 ? 'A' : analysisData.scores.pitch >= 80 ? 'B' : analysisData.scores.pitch >= 70 ? 'C' : 'D',
+                                                                        clarity: analysisData.scores.clarity >= 90 ? 'A' : analysisData.scores.clarity >= 80 ? 'B' : analysisData.scores.clarity >= 70 ? 'C' : 'D'
+                                                                    } : {})}
+                                                                    size={110}
+                                                                    showLabels={false}
+                                                                    showGrid={false}
+                                                                    isPreview={true}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                {isProcessing ? (
+                                                                    <>
+                                                                        <div 
+                                                                            className="analysis-spinner"
+                                                                            style={{
+                                                                                width: '24px',
+                                                                                height: '24px',
+                                                                                border: '3px solid #e3f2fd',
+                                                                                borderTopColor: '#1976d2',
+                                                                                borderRadius: '50%'
+                                                                            }}
+                                                                        ></div>
+                                                                        <div style={{
+                                                                            fontSize: '14px',
+                                                                            color: '#1976d2',
+                                                                            fontWeight: '500'
+                                                                        }}>
+                                                                            분석 진행중
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <div style={{
+                                                                        fontSize: '14px',
+                                                                        color: '#999',
+                                                                        fontWeight: '500'
+                                                                    }}>
+                                                                        분석 대기중
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1288,21 +1846,33 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
     };
 
     return (
-        <div style={{
-            position: 'fixed',
-            left: isCollapsed ? -427 : 0,
-            top: 0,
-            width: 427,
-            height: '100vh',
-            background: '#ffffff',
-            transition: 'left 0.3s ease-in-out',
-            zIndex: 1000,
-            borderRight: isCollapsed ? 'none' : '1px solid rgba(0, 0, 0, 0.1)',
-            boxShadow: isCollapsed ? 'none' : '2px 0px 8px rgba(0, 0, 0, 0.1)',
-            overflowY: 'auto',
-            visibility: isCollapsed ? 'hidden' : 'visible',
-            opacity: isCollapsed ? 0 : 1
-        }}>
+        <>
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                .analysis-spinner {
+                    animation: spin 1s linear infinite;
+                }
+            `}</style>
+            {/* user가 없으면 사이드바를 렌더링하지 않음 */}
+            {(!user || (!user.userId && !user.id && !user.email)) ? null : (
+            <div style={{
+                position: 'fixed',
+                left: isCollapsed ? -427 : 0,
+                top: 0,
+                width: 427,
+                height: '100vh',
+                background: '#ffffff',
+                transition: 'left 0.3s ease-in-out',
+                zIndex: 1000,
+                borderRight: isCollapsed ? 'none' : '1px solid rgba(0, 0, 0, 0.1)',
+                boxShadow: isCollapsed ? 'none' : '2px 0px 8px rgba(0, 0, 0, 0.1)',
+                overflowY: 'auto',
+                visibility: isCollapsed ? 'hidden' : 'visible',
+                opacity: isCollapsed ? 0 : 1
+            }}>
             {/* Top spacing for navbar area */}
             <div style={{ height: '70px' }}></div>
 
@@ -1857,6 +2427,8 @@ const CollapsibleSidebar = ({ isCollapsed, refreshKey }) => {
                 </div>
             )}
         </div>
+            )}
+        </>
     );
 };
 

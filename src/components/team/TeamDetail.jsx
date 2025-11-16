@@ -70,6 +70,7 @@ const TeamDetail = ({ teamId, onBack, onEdit, onInviteMember }) => {
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [removeMemberDialogOpen, setRemoveMemberDialogOpen] = useState(false);
   const [deleteTeamDialogOpen, setDeleteTeamDialogOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -108,6 +109,23 @@ const TeamDetail = ({ teamId, onBack, onEdit, onInviteMember }) => {
 
   const handleDeleteTeam = async () => {
     try {
+      setDeleteError('');
+
+      // 사전 검증: 소유자 본인 외 멤버가 남아있으면 삭제 불가 가이드
+      const otherMembers = (currentTeam?.members || []).filter(m => m.userId !== user?.userId);
+      if (otherMembers.length > 0) {
+        setDeleteError('다른 멤버가 남아 있어 팀을 삭제할 수 없습니다. 멤버를 모두 제거한 후 다시 시도하세요.');
+        return;
+      }
+
+      // 사전 검증: 팀 관련 토픽/프레젠테이션이 있으면 안내
+      const teamTopics = (topics || []).filter(t => t.teamId === teamId);
+      const teamPresentations = (presentations || []).filter(p => teamTopics.some(t => t.id === p.topicId));
+      if (teamTopics.length > 0 || teamPresentations.length > 0) {
+        setDeleteError('팀에 연결된 토픽/프레젠테이션이 있어 삭제할 수 없습니다. 관련 리소스를 정리한 후 다시 시도하세요.');
+        return;
+      }
+
       await dispatch(deleteTeam(teamId)).unwrap();
       setDeleteTeamDialogOpen(false);
       if (onBack) {
@@ -115,6 +133,7 @@ const TeamDetail = ({ teamId, onBack, onEdit, onInviteMember }) => {
       }
     } catch (error) {
       console.error('팀 삭제 실패:', error);
+      setDeleteError(typeof error === 'string' ? error : (error?.message || '팀 삭제에 실패했습니다.'));
     }
   };
 
@@ -545,6 +564,11 @@ const TeamDetail = ({ teamId, onBack, onEdit, onInviteMember }) => {
           <Typography>
             정말로 "{currentTeam.name}" 팀을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
           </Typography>
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTeamDialogOpen(false)}>취소</Button>

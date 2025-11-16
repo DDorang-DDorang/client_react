@@ -16,6 +16,17 @@ export const getVideoUrl = (url) => {
         return url;
     }
     
+    // 프로덕션 환경에서 외부 파일 서버 URL 직접 사용 (리디렉션 문제 방지)
+    const isProduction = !window.location.origin.includes('localhost') && 
+                         !window.location.origin.includes('127.0.0.1');
+    
+    if (isProduction && url.startsWith('/api/files/videos/')) {
+        // 외부 파일 서버 URL 직접 사용
+        const externalStorageUrl = 'https://malkongserver.shop';
+        const videoPath = url.replace('/api/files/videos/', '');
+        return `${externalStorageUrl}/api/files/videos/${videoPath}`;
+    }
+    
     // 상대 경로인 경우, Spring Boot API URL 사용
     // Spring Boot가 use-external-storage=true일 때 자동으로 파일 서버로 리다이렉트
     const apiUrl = getApiBaseUrl();
@@ -27,16 +38,17 @@ export const getVideoUrl = (url) => {
  * @returns {string} API 기본 URL
  */
 export const getApiBaseUrl = () => {
+    // 환경 변수에서 API URL 가져오기 (우선순위 1)
+    if (process.env.REACT_APP_API_URL) {
+        return process.env.REACT_APP_API_URL;
+    }
+    
     // 개발 환경
     if (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) {
         return 'http://localhost:8080';
     }
     
-    // 프로덕션 환경
-    // 현재 도메인에서 포트만 8080으로 변경
-    const origin = window.location.origin;
-    // 포트가 있는 경우 제거하고 8080 추가
-    const urlWithoutPort = origin.replace(/:\d+$/, '');
-    return `${urlWithoutPort}:8080`;
+    // 프로덕션 환경: Nginx를 통해 프록시되므로 현재 도메인 사용 (포트 없음)
+    return window.location.origin;
 };
 

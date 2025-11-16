@@ -57,7 +57,8 @@ export const deleteTeam = createAsyncThunk(
       await teamService.deleteTeam(teamId);
       return teamId;
     } catch (error) {
-      return rejectWithValue(error.message || '팀 삭제에 실패했습니다.');
+      const backendMessage = error?.response?.data?.message || error?.response?.data?.error || error?.response?.data?.detail;
+      return rejectWithValue(backendMessage || error.message || '팀 삭제에 실패했습니다.');
     }
   }
 );

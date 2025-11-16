@@ -73,14 +73,27 @@ const CommentSection = ({ presentationId, currentTime = 0, onSeekToTime }) => {
   }, [dispatch, user]);
 
   // 댓글 목록 조회
+  const presentationIdRef = React.useRef(presentationId);
+  const sortByRef = React.useRef(sortBy);
+  
   useEffect(() => {
-    if (presentationId) {
+    // presentationId가 변경된 경우에만 댓글 로드
+    if (presentationId && presentationId !== presentationIdRef.current) {
+      presentationIdRef.current = presentationId;
+      dispatch(fetchComments({ presentationId, sortBy: sortByRef.current }));
+    }
+    
+    // sortBy가 변경된 경우에만 댓글 다시 로드
+    if (presentationId && sortBy !== sortByRef.current) {
+      sortByRef.current = sortBy;
       dispatch(fetchComments({ presentationId, sortBy }));
     }
 
     // 컴포넌트 언마운트 시 댓글 상태 정리
     return () => {
-      dispatch(clearComments());
+      if (presentationIdRef.current !== presentationId) {
+        dispatch(clearComments());
+      }
     };
   }, [presentationId, sortBy, dispatch]);
 

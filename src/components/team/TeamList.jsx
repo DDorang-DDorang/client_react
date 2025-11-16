@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchUserTeams } from '../../store/slices/teamSlice';
 import {
@@ -38,9 +38,15 @@ const TeamList = ({ onTeamSelect, onCreateTeam, onInviteMember }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedTeam, setSelectedTeam] = useState(null);
 
+  const teamsLoadedRef = useRef(false);
+  
   useEffect(() => {
-    dispatch(fetchUserTeams());
-  }, [dispatch]);
+    // 팀 목록이 이미 로드되었으면 재로드하지 않음
+    if (!teamsLoadedRef.current && teams.length === 0) {
+      teamsLoadedRef.current = true;
+      dispatch(fetchUserTeams());
+    }
+  }, [dispatch, teams.length]);
 
   const handleMenuOpen = (event, team) => {
     setAnchorEl(event.currentTarget);

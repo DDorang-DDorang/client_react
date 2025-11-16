@@ -21,58 +21,7 @@ const NotificationManager = () => {
         }
     }, []);
 
-    // 알림 폴링
-    useEffect(() => {
-        if (!isAuthenticated) return;
-
-        const fetchNotifications = async () => {
-            try {
-                const notificationsData = await notificationService.getNotifications();
-                
-                if (notificationsData && notificationsData.length > 0) {
-                    // 최신 알림 확인
-                    const latestNotification = notificationsData[0];
-                    
-                    // 알림 ID 추출 (notificationId 또는 id)
-                    const notificationId = latestNotification.notificationId || latestNotification.id;
-                    
-                    // 새 알림이 있는지 확인
-                    if (lastNotificationIdRef.current !== notificationId) {
-                        // 두 번째 알림부터 표시 (초기 로드 제외)
-                        if (lastNotificationIdRef.current !== null) {
-                            // 새 알림 표시
-                            showBrowserNotification(latestNotification);
-                            // 토스트 알림 표시
-                            setToastNotification(latestNotification);
-                        }
-                        lastNotificationIdRef.current = notificationId;
-                    }
-
-                    dispatch(setNotifications(notificationsData));
-                }
-            } catch (error) {
-                // 모든 에러를 조용히 처리 (콘솔 로그 없음)
-                if (error.response?.status === 401) {
-                    // 토큰 문제로 인해 알림 조회 불가
-                    return;
-                }
-            }
-        };
-
-        // 초기 로드
-        fetchNotifications();
-
-        // 30초마다 폴링 (인증 부담 감소)
-        intervalRef.current = setInterval(fetchNotifications, 30000);
-
-        return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
-        };
-    }, [isAuthenticated, dispatch]);
-
-    // 브라우저 알림 표시
+    // 브라우저 알림 표시 함수 (useEffect 외부에 정의하여 클로저 문제 방지)
     const showBrowserNotification = (notification) => {
         if ('Notification' in window && Notification.permission === 'granted') {
             const browserNotification = new Notification(notification.title, {
@@ -104,6 +53,87 @@ const NotificationManager = () => {
             }, 5000);
         }
     };
+
+    // 알림 폴링
+    useEffect(() => {
+        if (!isAuthenticated) {
+            // 인증되지 않았으면 interval 정리
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            return;
+        }
+
+        const fetchNotifications = async () => {
+            try {
+                const notificationsData = await notificationService.getNotifications();
+                
+                if (notificationsData && notificationsData.length > 0) {
+                    // 최신 알림 및 첫 미확인 알림 확인
+                    const latestNotification = notificationsData[0];
+                    const firstUnread = notificationsData.find(n => !n.isRead);
+
+                    // 알림 ID 추출 (notificationId 또는 id)
+                    const latestId = latestNotification.notificationId || latestNotification.id;
+                    const firstUnreadId = firstUnread ? (firstUnread.notificationId || firstUnread.id) : null;
+
+                    // 상태
+                    const isInitialLoad = lastNotificationIdRef.current === null;
+                    const isNewNotification = lastNotificationIdRef.current !== latestId;
+                    const latestIsUnread = !latestNotification.isRead;
+
+                    if (isInitialLoad) {
+                        // 초기 로드: 읽지 않은 알림이 하나라도 있으면 그 중 가장 최신 것을 표시
+                        if (firstUnread) {
+                            showBrowserNotification(firstUnread);
+                            setToastNotification(firstUnread);
+                            lastNotificationIdRef.current = firstUnreadId;
+                        } else {
+                            // 읽지 않은 것이 없으면 최신의 ID만 기록
+                            lastNotificationIdRef.current = latestId;
+                        }
+                    } else if (isNewNotification) {
+                        // 신규 알림 도착: 최신이 읽지 않은 경우에만 표시
+                        if (latestIsUnread) {
+                            showBrowserNotification(latestNotification);
+                            setToastNotification(latestNotification);
+                        }
+                        lastNotificationIdRef.current = latestId;
+                    }
+
+                    dispatch(setNotifications(notificationsData));
+                } else {
+                    // 알림이 없어도 상태 업데이트
+                    dispatch(setNotifications([]));
+                }
+            } catch (error) {
+                // 모든 에러를 조용히 처리 (콘솔 로그 없음)
+                if (error.response?.status === 401) {
+                    // 토큰 문제로 인해 알림 조회 불가
+                    return;
+                }
+            }
+        };
+
+        // 초기 로드
+        fetchNotifications();
+
+        // 15초마다 폴링 (분석 완료 알림을 더 빠르게 받기 위해 주기 단축)
+        // 이미 interval이 있으면 정리 후 새로 설정
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+        }
+        intervalRef.current = setInterval(fetchNotifications, 10000); // 15초 = 15000ms
+
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated]); // dispatch와 navigate는 안정적인 참조이므로 dependency에서 제외
 
     const handleCloseToast = () => {
         setToastNotification(null);

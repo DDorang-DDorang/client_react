@@ -1,10 +1,58 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8080';
+// 환경 변수에서 API URL 가져오기 (빌드 시점에 주입됨)
+const getApiUrl = () => {
+    // 환경 변수가 있으면 사용 (하지만 HTTP를 HTTPS로 변환)
+    if (process.env.REACT_APP_API_URL) {
+        let apiUrl = process.env.REACT_APP_API_URL;
+        // 현재 페이지가 HTTPS인데 환경 변수가 HTTP로 시작하면 HTTPS로 변환
+        if (window.location.protocol === 'https:' && apiUrl.startsWith('http://')) {
+            apiUrl = apiUrl.replace('http://', 'https://');
+            console.log('API_URL converted from HTTP to HTTPS:', apiUrl);
+        } else {
+            console.log('API_URL from env:', apiUrl);
+        }
+        return apiUrl;
+    }
+    
+    // 로컬 개발 환경
+    if (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) {
+        console.log('API_URL for localhost:', 'http://localhost:8080');
+        return 'http://localhost:8080';
+    }
+    
+    // 프로덕션 환경: 현재 페이지의 프로토콜을 따라감
+    // HTTPS 페이지에서는 HTTPS API를 사용해야 함 (Mixed Content 방지)
+    const protocol = window.location.protocol; // 'https:' or 'http:'
+    const host = window.location.host; // 'malkong.site'
+    
+    // 현재 페이지가 HTTPS면 API도 HTTPS 사용 (강제)
+    if (protocol === 'https:') {
+        const apiUrl = `https://${host}`;
+        console.log('API_URL for HTTPS:', apiUrl);
+        return apiUrl;
+    }
+    
+    // HTTP 페이지인 경우도 HTTPS로 강제 (프로덕션에서는 항상 HTTPS 사용)
+    // malkong.site 도메인인 경우 항상 HTTPS 사용
+    if (host.includes('malkong.site')) {
+        const apiUrl = `https://${host}`;
+        console.log('API_URL forced to HTTPS for malkong.site:', apiUrl);
+        return apiUrl;
+    }
+    
+    // 기타 HTTP 페이지인 경우
+    const apiUrl = `http://${host}`;
+    console.log('API_URL for HTTP:', apiUrl);
+    return apiUrl;
+};
+
+const API_URL = getApiUrl();
+console.log('Final API_URL:', API_URL);
 
 const api = axios.create({
     baseURL: API_URL,
-    timeout: 300000, // 타임아웃을 5분으로 증가
+    timeout: 600000, // 타임아웃을 10분으로 증가 (대용량 파일 업로드 지원)
     headers: {
         'Content-Type': 'application/json',
     },
@@ -21,8 +69,10 @@ api.interceptors.request.use(
         // multipart/form-data 요청의 경우 Content-Type을 자동으로 설정하도록 함
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type']; // 브라우저가 자동으로 설정하도록
-            // 파일 업로드 요청의 경우 타임아웃을 더 길게 설정
-            config.timeout = 300000; // 5분
+            // 파일 업로드 요청의 경우 타임아웃을 더 길게 설정 (명시적으로 설정되지 않은 경우만)
+            if (!config.timeout) {
+                config.timeout = 600000; // 10분 (대용량 파일 업로드 지원)
+            }
         }
         
         config.withCredentials = true;
@@ -93,7 +143,7 @@ api.interceptors.response.use(
                 if (provider === 'GOOGLE') {
                     console.log('Google OAuth 토큰 - 백엔드 갱신 API 호출');
                     try {
-                        const refreshResponse = await axios.post(`${API_URL}/api/oauth2/refresh`, null, {
+                        const refreshResponse = await axios.post(`${api.defaults.baseURL}/api/oauth2/refresh`, null, {
                             params: { email },
                             timeout: 10000
                         });
@@ -112,7 +162,7 @@ api.interceptors.response.use(
                 }
                 
                 // 이메일로 토큰 갱신 요청 (LOCAL 토큰만)
-                const refreshResponse = await axios.post(`${API_URL}/api/auth/token/refresh`, null, {
+                const refreshResponse = await axios.post(`${api.defaults.baseURL}/api/auth/token/refresh`, null, {
                     params: { email },
                     timeout: 10000
                 });

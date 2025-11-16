@@ -1,7 +1,8 @@
 import api from './axios';
 import { API_ROUTES } from './constants';
 
-const API_URL = 'http://localhost:8080';
+// 환경 변수에서 API URL 가져오기
+const API_URL = process.env.REACT_APP_API_URL || api.defaults.baseURL;
 
 const authService = {
     // Regular login
@@ -57,7 +58,8 @@ const authService = {
 
     // Google OAuth2 login
     googleLogin: () => {
-        window.location.href = `${API_URL}${API_ROUTES.OAUTH.GOOGLE_LOGIN}`;
+        const oauthUrl = process.env.REACT_APP_OAUTH_REDIRECT_URL || `${API_URL}${API_ROUTES.OAUTH.GOOGLE_LOGIN}`;
+        window.location.href = oauthUrl;
     },
 
     // Handle OAuth2 login success
@@ -531,7 +533,7 @@ const authService = {
 
             console.log('Google OAuth 토큰 재발급 시도 중... 이메일:', email);
 
-            const response = await fetch(`http://localhost:8080/api/oauth2/refresh?email=${encodeURIComponent(email)}`, {
+            const response = await fetch(`${API_URL}/api/oauth2/refresh?email=${encodeURIComponent(email)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

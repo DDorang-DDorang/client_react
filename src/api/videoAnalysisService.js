@@ -222,14 +222,14 @@ const videoAnalysisService = {
                         return;
                     }
 
-                    // 5초 후 다시 시도
+                    // 10초 후 다시 시도 (주기 증가로 서버 부하 감소)
                     attempts++;
                     if (attempts >= maxAttempts) {
                         reject(new Error('분석 시간이 초과되었습니다.'));
                         return;
                     }
 
-                    setTimeout(poll, 5000);
+                    setTimeout(poll, 10000); // 5초 -> 10초로 증가
                 } catch (error) {
                     reject(error);
                 }

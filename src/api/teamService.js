@@ -35,6 +35,9 @@ export const teamService = {
 
   // 팀 초대 링크 생성
   createInvite: async (teamId, inviteData) => {
+    if (!teamId) {
+      throw new Error('유효한 팀 ID가 없습니다. 다시 시도해주세요.');
+    }
     const response = await axios.post(`${TEAM_API_BASE}/${teamId}/invites`, inviteData);
     return response.data;
   },

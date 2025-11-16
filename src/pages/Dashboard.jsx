@@ -8,7 +8,7 @@ import { CameraRecorder as CameraRecorderUtil, formatTime } from '../utils/camer
 import topicService from '../api/topicService';
 import videoAnalysisService from '../api/videoAnalysisService';
 import { useSelector, useDispatch } from 'react-redux';
-import { setTopics, setCurrentTopic, addPresentation, addTopic } from '../store/slices/topicSlice';
+import { setTopics, setCurrentTopic, addPresentation, addTopic, updateTopicPresentationCount } from '../store/slices/topicSlice';
 import { fetchUserInfo, setUser, logout } from '../store/slices/authSlice';
 import useError from '../hooks/useError';
 import useLoading from '../hooks/useLoading';
@@ -229,7 +229,29 @@ const Dashboard = () => {
             );
 
             if (uploadResult.success) {
+                // addPresentation 액션이 presentationCount를 자동으로 업데이트함
                 dispatch(addPresentation(uploadResult.data));
+                
+                // 프레젠테이션 개수 명시적 업데이트 (topicId가 있는 경우)
+                // addPresentation이 이미 presentationCount를 증가시키지만,
+                // 팀 토픽의 경우 제대로 반영되지 않을 수 있으므로 서버에서 최신 개수 가져오기
+                if (uploadResult.data?.topicId) {
+                    try {
+                        // 서버에서 최신 프레젠테이션 목록을 가져와서 정확한 개수 확인
+                        const presentationsResult = await topicService.getPresentations(uploadResult.data.topicId);
+                        if (presentationsResult.success && presentationsResult.data) {
+                            const latestCount = presentationsResult.data.length;
+                            dispatch(updateTopicPresentationCount({
+                                topicId: uploadResult.data.topicId,
+                                count: latestCount
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('프레젠테이션 개수 업데이트 실패:', error);
+                        // 실패해도 addPresentation이 이미 업데이트했으므로 계속 진행
+                    }
+                }
+                
                 setShowUploader(false);
                 setRefreshSidebarKey(prev => prev + 1); // 사이드바 새로고침 트리거
                 

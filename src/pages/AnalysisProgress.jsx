@@ -27,8 +27,8 @@ const AnalysisProgress = () => {
         loadMissingData();
         checkAnalysisStatus();
         
-        // 5초마다 상태 확인
-        const interval = setInterval(checkAnalysisStatus, 5000);
+        // 10초마다 상태 확인 (주기 증가로 서버 부하 감소)
+        const interval = setInterval(checkAnalysisStatus, 10000);
         
         return () => clearInterval(interval);
     }, [presentationId]);
@@ -70,15 +70,37 @@ const AnalysisProgress = () => {
                 if (data.status === 'failed') {
                     setError(data.message || '분석에 실패했습니다.');
                 }
-            } else if (response.status === 404) {
-                // 프레젠테이션이 삭제된 경우 대시보드로 이동
-                navigate('/dashboard', { replace: true });
-                return;
+            } else if (response.status === 404 || response.status === 400) {
+                // 프레젠테이션이 삭제되었거나 존재하지 않는 경우 대시보드로 이동
+                // 응답 본문 확인하여 프레젠테이션 관련 오류인지 확인
+                try {
+                    const errorData = await response.json();
+                    if (errorData.message?.includes('존재하지 않') || 
+                        errorData.message?.includes('찾을 수 없') ||
+                        errorData.error?.includes('NOT_FOUND')) {
+                        navigate('/dashboard', { replace: true });
+                        return;
+                    }
+                } catch (e) {
+                    // JSON 파싱 실패 시에도 404/400이면 삭제된 것으로 간주
+                    navigate('/dashboard', { replace: true });
+                    return;
+                }
+                setError('분석 상태를 확인할 수 없습니다.');
             } else {
                 setError('분석 상태를 확인할 수 없습니다.');
             }
         } catch (err) {
-            console.error('분석 상태 확인 실패:', err);
+            // 네트워크 오류나 다른 오류도 프레젠테이션 삭제 가능성 고려
+            // 404나 프레젠테이션 관련 오류인 경우 대시보드로 이동
+            if (err.message?.includes('404') || 
+                err.message?.includes('Not Found') ||
+                err.message?.includes('400') ||
+                err.response?.status === 404 ||
+                err.response?.status === 400) {
+                navigate('/dashboard', { replace: true });
+                return;
+            }
             setError('분석 상태를 확인하는 중 오류가 발생했습니다.');
         } finally {
             setLoading(false);

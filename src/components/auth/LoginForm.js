@@ -47,7 +47,9 @@ const LoginForm = () => {
     };
 
     const handleGoogleClick = () => {
-        window.location.href = 'http://localhost:8080/oauth2/authorization/google';
+        const oauthUrl = process.env.REACT_APP_OAUTH_REDIRECT_URL || 
+            (process.env.REACT_APP_API_URL || 'http://localhost:8080') + '/oauth2/authorization/google';
+        window.location.href = oauthUrl;
     };
 
     return (

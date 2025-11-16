@@ -270,14 +270,17 @@ const TeamManagement = () => {
             </Box>
           </Box>
 
+          {/* 오류가 있어도 목록은 계속 보여줌 */}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
-          ) : error ? (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
           ) : teams.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <GroupIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
